@@ -1,50 +1,8 @@
 # Multi-stage build for PolyPulse
+# This Dockerfile builds the Rust backend for deployment on Render.
+# The frontend is served separately (static hosting).
 
-# ── Stage 1: Build Soroban contracts ─────────────────────────────────────────
-FROM rust:1.85-slim AS soroban-builder
-
-WORKDIR /soroban
-
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    pkg-config \
-    libssl-dev \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN rustup target add wasm32-unknown-unknown
-RUN cargo install --locked soroban-cli --features opt
-
-COPY contracts/Cargo.toml contracts/Cargo.lock contracts/rust-toolchain.toml ./
-COPY contracts/contracts ./contracts
-COPY contracts/tests ./tests
-
-RUN cargo build --release --target wasm32-unknown-unknown
-
-RUN for contract in contracts/*/; do \
-    contract_name=$(basename "$contract"); \
-    if [ -f "target/wasm32-unknown-unknown/release/${contract_name}.wasm" ]; then \
-        soroban contract optimize \
-            --wasm target/wasm32-unknown-unknown/release/${contract_name}.wasm; \
-    fi; \
-    done
-
-# ── Stage 2: Build frontend ───────────────────────────────────────────────────
-FROM node:20-alpine AS frontend-builder
-
-WORKDIR /app
-
-COPY frontend/package*.json ./
-RUN npm ci
-
-COPY frontend .
-
-# Copy optimized contracts for frontend integration
-COPY --from=soroban-builder /soroban/target/wasm32-unknown-unknown/release/*.optimized.wasm ./contracts/
-
-RUN npm run build
-
-# ── Stage 3: Build Rust backend ───────────────────────────────────────────────
+# ── Stage 1: Build Rust backend ───────────────────────────────────────────────
 FROM rust:1.85-slim AS backend-builder
 
 WORKDIR /app
@@ -55,13 +13,21 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy dependency files first for better layer caching
+# (only re-runs cargo fetch when Cargo.toml/Cargo.lock change)
 COPY backend/Cargo.toml backend/Cargo.lock ./
+
+# Create a dummy main.rs so cargo can fetch deps without the full source
+RUN mkdir src && echo 'fn main() {}' > src/main.rs
+RUN cargo fetch
+
+# Now copy the real source and build
 COPY backend/src ./src
 COPY backend/migrations ./migrations
 
 RUN cargo build --release
 
-# ── Stage 4: Final runtime image (backend) ────────────────────────────────────
+# ── Stage 2: Final runtime image ──────────────────────────────────────────────
 FROM debian:bookworm-slim AS backend
 
 RUN apt-get update && apt-get install -y \
