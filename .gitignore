@@ -2,6 +2,7 @@
 target/
 Cargo.lock
 !contracts/Cargo.lock
+!backend/Cargo.lock
 **/*.rs.bk
 *.pdb
 
