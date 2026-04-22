@@ -36,13 +36,23 @@ RUN apt-get update && apt-get install -y \
     libpq5 \
     libssl3 \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install sqlx-cli for running migrations
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN cargo install sqlx-cli --no-default-features --features postgres
 
 WORKDIR /app
 
 COPY --from=backend-builder /app/target/release/backend ./backend
 COPY --from=backend-builder /app/migrations ./migrations
 
+# Create startup script that runs migrations then starts the server
+RUN echo '#!/bin/sh\nset -e\necho "Running database migrations..."\nsqlx migrate run\necho "Starting backend server..."\nexec ./backend' > /app/start.sh && \
+    chmod +x /app/start.sh
+
 EXPOSE 8000
 
-CMD ["./backend"]
+CMD ["/app/start.sh"]
