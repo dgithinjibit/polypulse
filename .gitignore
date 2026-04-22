@@ -1,6 +1,7 @@
 # ─── Rust ────────────────────────────────────────────────────────────────────
 target/
 Cargo.lock
+!contracts/Cargo.lock
 **/*.rs.bk
 *.pdb
 
