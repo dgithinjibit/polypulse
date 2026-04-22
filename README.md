@@ -1,6 +1,6 @@
 # PolyPulse — Stellar Prediction Markets
 
-A Web3 prediction markets dApp where users trade on real-world outcomes using Stellar wallets. Built for the Stellar hackathon, deployed at [polypulse.co.ke](https://polypulse.co.ke).
+A Web3 prediction markets platform where users trade on real-world outcomes using Stellar wallets. Built for the Stellar hackathon, live at [polypulse.co.ke](https://polypulse.co.ke).
 
 ---
 
@@ -12,104 +12,68 @@ A Web3 prediction markets dApp where users trade on real-world outcomes using St
 | Backend | Rust + Axum + SQLx |
 | Realtime | WebSockets via Axum + Redis Pub/Sub |
 | Blockchain | Stellar (Soroban Smart Contracts) |
-| Database | PostgreSQL |
-| Cache | Redis |
-| Auth | JWT + Freighter Wallet signature verification |
+| Database | PostgreSQL 15 |
+| Cache | Redis 7 |
+| Auth | JWT + Freighter wallet signature verification (ed25519) |
+| Testing | Vitest + Playwright (frontend), cargo test (backend/contracts) |
 
 ---
 
-## Quick Start (Development)
+## Project Structure
+
+```
+polypulse/
+├── backend/                        # Rust/Axum API server
+│   ├── src/
+│   │   ├── routes/                 # HTTP route handlers (auth, polls, bets, wagers, wallet…)
+│   │   ├── services/               # Business logic (cache, wallet, paymaster, poll_closer…)
+│   │   ├── middleware/             # Auth, rate limiting, request ID, validation
+│   │   ├── models.rs               # Database model structs
+│   │   ├── lmsr.rs                 # LMSR pricing algorithm
+│   │   ├── config.rs               # Environment-based configuration
+│   │   ├── state.rs                # Shared AppState (DB pool, Redis, config)
+│   │   └── ws/                     # WebSocket hub for real-time updates
+│   ├── migrations/                 # SQL migration files (sqlx)
+│   └── Cargo.toml
+├── contracts/                      # Stellar Soroban smart contracts
+│   └── contracts/
+│       ├── market/                 # LMSR prediction market contract
+│       └── challenge/              # 1v1 wager contract
+├── frontend/                       # React + TypeScript SPA
+│   ├── src/
+│   │   ├── components/             # Navbar, Footer, WalletModal, ProtectedRoute…
+│   │   ├── context/                # AuthContext, StellarWalletContext
+│   │   ├── pages/                  # Markets, Challenges, Wagers, Portfolio, Wallet…
+│   │   ├── hooks/                  # useWagers, useChat, use-toast
+│   │   ├── services/               # Axios API client
+│   │   ├── lib/                    # stellar-helper, stellar-sdk-loader, utils
+│   │   ├── config/                 # API config
+│   │   └── types/                  # Shared TypeScript types
+│   ├── e2e/                        # Playwright end-to-end tests
+│   └── package.json
+├── docker-compose.yml
+├── Dockerfile
+├── .env.example
+└── README.md
+```
+
+---
+
+## Quick Start
 
 ### Prerequisites
+
 - Rust 1.79+
 - Node.js 18+
 - PostgreSQL 15+
 - Redis 7+
-- Stellar CLI (for contract deployment)
+- Stellar CLI (for contract deployment only)
 
-### Backend
-
-```bash
-cd backend
-cargo build
-
-# Copy and configure environment
-cp ../.env.example ../.env
-# Edit .env — set JWT_SECRET, DATABASE_URL, REDIS_URL
-
-# Run migrations
-sqlx migrate run
-
-# Start server
-cargo run
-```
-
-### Frontend
+### 1. Environment
 
 ```bash
-cd frontend
-npm install
-cp .env.development .env.local   # adjust if needed
-npm run dev
-```
-
-App runs at `http://localhost:5173`, API at `http://localhost:8000`.
-
----
-
-## Environment Variables
-
-### Backend (`.env` in root)
-
-| Variable | Required | Description |
-|---|---|---|
-| `JWT_SECRET` | ✅ | JWT signing secret — generate with `openssl rand -base64 32` |
-| `PORT` | ✅ | Server port (default: 8000) |
-| `DATABASE_URL` | ✅ | PostgreSQL URL, e.g. `postgres://user:pass@localhost:5432/polypulse` |
-| `REDIS_URL` | ✅ | Redis URL for WebSocket pub/sub, e.g. `redis://localhost:6379` |
-| `CORS_ALLOWED_ORIGINS` | ✅ | Frontend origin(s), e.g. `https://polypulse.co.ke` |
-| `STELLAR_NETWORK` | ✅ | `mainnet` or `testnet` |
-| `STELLAR_RPC_URL` | ✅ | Soroban RPC URL |
-| `STELLAR_HORIZON_URL` | ✅ | Horizon API URL |
-| `STELLAR_MARKET_CONTRACT_ID` | — | Deployed market contract address |
-| `STELLAR_CHALLENGE_CONTRACT_ID` | — | Deployed challenge contract address |
-
-### Frontend (`frontend/.env.local`)
-
-| Variable | Description |
-|---|---|
-| `VITE_API_URL` | Rust backend URL, e.g. `https://api.polypulse.co.ke` |
-| `VITE_API_HOST` | Backend host for WebSocket URL construction |
-| `VITE_WS_URL` | WebSocket base URL, e.g. `wss://api.polypulse.co.ke` |
-| `VITE_STELLAR_NETWORK` | `mainnet` or `testnet` |
-| `VITE_STELLAR_HORIZON_URL` | Horizon API URL |
-| `VITE_STELLAR_MARKET_CONTRACT_ID` | Market contract address |
-| `VITE_STELLAR_CHALLENGE_CONTRACT_ID` | Challenge contract address |
-
----
-
-## Production Deployment
-
-### 1. Server Setup
-
-```bash
-# Install system dependencies
-sudo apt update && sudo apt install -y \
-    build-essential \
-    pkg-config \
-    libssl-dev \
-    libpq-dev \
-    nodejs \
-    npm \
-    redis-server \
-    postgresql
-
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Clone repo
-git clone https://github.com/your-org/polypulse.git
-cd polypulse
+cp .env.example .env
+# Edit .env — set at minimum: JWT_SECRET, DATABASE_URL, POSTGRES_PASSWORD
 ```
 
 ### 2. Backend
@@ -117,18 +81,11 @@ cd polypulse
 ```bash
 cd backend
 
-# Configure environment
-cp ../.env.example ../.env
-nano ../.env   # Set JWT_SECRET, DATABASE_URL, REDIS_URL, CORS_ALLOWED_ORIGINS
-
-# Build release
-cargo build --release
-
-# Run migrations
+# Run DB migrations
 sqlx migrate run
 
-# Run server
-./target/release/backend
+# Start dev server (listens on :8000)
+cargo run
 ```
 
 ### 3. Frontend
@@ -136,31 +93,274 @@ sqlx migrate run
 ```bash
 cd frontend
 npm install
-cp .env.production .env.local   # adjust VITE_API_URL if needed
-npm run build
-# Serve dist/ with nginx or any static host
+npm run dev
+# Runs at http://localhost:5173
 ```
 
-### 4. Nginx (example)
+### 4. Docker (all services)
+
+```bash
+docker compose up -d
+```
+
+This starts PostgreSQL, Redis, the Rust backend, and the frontend together.
+
+---
+
+## Environment Variables
+
+### Backend / Root `.env`
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `JWT_SECRET` | Yes | — | JWT signing secret. Generate: `openssl rand -base64 32` |
+| `DATABASE_URL` | Yes | — | PostgreSQL URL: `postgres://user:pass@host:5432/polypulse` |
+| `POSTGRES_DB` | Yes | `polypulse` | Database name (used by Docker) |
+| `POSTGRES_USER` | Yes | `polypulse` | Database user (used by Docker) |
+| `POSTGRES_PASSWORD` | Yes | — | Database password |
+| `REDIS_URL` | No | `redis://127.0.0.1:6379` | Redis connection URL |
+| `RUST_PORT` | No | `8000` | Backend server port |
+| `CORS_ORIGINS` | No | `http://localhost:5173` | Comma-separated allowed origins |
+| `STELLAR_NETWORK` | No | — | `mainnet` or `testnet` |
+| `STELLAR_RPC_URL` | No | — | Soroban RPC endpoint |
+| `STELLAR_HORIZON_URL` | No | — | Horizon API endpoint |
+| `STELLAR_MARKET_CONTRACT_ID` | No | — | Deployed market contract address |
+| `STELLAR_CHALLENGE_CONTRACT_ID` | No | — | Deployed challenge contract address |
+
+### Frontend `frontend/.env.local`
+
+| Variable | Description |
+|---|---|
+| `VITE_API_URL` | Backend base URL, e.g. `https://api.polypulse.co.ke` |
+| `VITE_API_HOST` | Backend host for WebSocket URL construction |
+| `VITE_WS_URL` | WebSocket base URL, e.g. `wss://api.polypulse.co.ke` |
+| `VITE_STELLAR_NETWORK` | `mainnet` or `testnet` |
+| `VITE_HORIZON_URL` | Horizon API URL |
+| `VITE_SOROBAN_RPC_URL` | Soroban RPC URL |
+| `VITE_STELLAR_MARKET_CONTRACT_ID` | Market contract address |
+| `VITE_STELLAR_CHALLENGE_CONTRACT_ID` | Challenge contract address |
+
+---
+
+## API Reference
+
+All endpoints are prefixed with `/api/v1`. WebSocket connects at `/ws?token=<jwt>`.
+
+### Authentication
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/auth/register` | No | Register with email/password |
+| `POST` | `/auth/login` | No | Login with email/password |
+| `POST` | `/auth/stellar-nonce` | No | Get nonce for Stellar wallet auth |
+| `POST` | `/auth/stellar-login` | No | Authenticate with Freighter signature |
+| `POST` | `/auth/refresh` | No | Refresh access token |
+| `GET` | `/auth/verify-email/:token` | No | Verify email address |
+| `POST` | `/auth/logout` | Yes | Invalidate session |
+
+### Prediction Markets (Polls)
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/polls` | No | List all markets |
+| `GET` | `/polls/:id` | No | Get market details |
+| `POST` | `/polls` | Yes | Create a market |
+| `POST` | `/polls/:id/resolve` | Yes | Resolve with winning outcome |
+| `POST` | `/polls/:id/suspend` | Yes | Suspend a market |
+| `POST` | `/polls/:id/cancel` | Yes | Cancel and refund |
+
+### Trading
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/bets` | Yes | Buy shares (LMSR pricing) |
+| `POST` | `/bets/sell` | Yes | Sell shares |
+| `GET` | `/positions` | Yes | Get open positions |
+| `GET` | `/markets/:id/prices` | No | Current option prices |
+| `GET` | `/markets/:id/history` | No | Price history |
+
+### Challenges & Wagers
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/challenges` | No | List challenges |
+| `GET` | `/challenges/:id` | No | Challenge details |
+| `POST` | `/challenges` | Yes | Create challenge |
+| `POST` | `/challenges/:id/accept` | Yes | Accept challenge |
+| `POST` | `/challenges/:id/resolve` | Yes | Resolve challenge |
+| `POST` | `/challenges/:id/cancel` | Yes | Cancel challenge |
+| `GET` | `/wagers/:id` | No | Get wager by share link |
+| `GET` | `/wagers` | Yes | List your wagers |
+| `POST` | `/wagers` | Yes | Create wager |
+| `POST` | `/wagers/:id/accept` | Yes | Accept wager |
+| `POST` | `/wagers/:id/cancel` | Yes | Cancel wager |
+
+### Wallet & Notifications
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/wallet/balance` | Yes | Get wallet balance |
+| `GET` | `/wallet/transactions` | Yes | Transaction history |
+| `GET` | `/notifications` | Yes | List notifications |
+| `POST` | `/notifications/:id/read` | Yes | Mark as read |
+| `POST` | `/notifications/read-all` | Yes | Mark all as read |
+| `GET` | `/notifications/unread-count` | Yes | Unread count |
+
+### Other
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/health` | No | Health check |
+| `GET` | `/categories` | No | List poll categories |
+| `GET` | `/users/me` | Yes | Current user profile |
+| `GET` | `/users/me/portfolio` | Yes | User portfolio |
+| `POST` | `/paymaster/relay` | Yes | Relay gasless transaction |
+
+---
+
+## Authentication Flow
+
+Wallet-based auth using [Freighter](https://freighter.app):
+
+1. Frontend calls `POST /api/v1/auth/stellar-nonce` with the user's public key
+2. User signs a message containing the nonce in Freighter
+3. Frontend sends `{ public_key, signature, message }` to `POST /api/v1/auth/stellar-login`
+4. Backend verifies the ed25519 signature and marks the nonce as used
+5. Backend returns JWT access token (30 min) + refresh token (7 days)
+6. Frontend attaches `Authorization: Bearer <token>` to all API requests
+7. WebSocket connections authenticate via `?token=<jwt>` query param
+
+---
+
+## Rate Limits
+
+Implemented via Redis sliding window per IP (anonymous) or user ID (authenticated).
+
+| Tier | Limit | Endpoints |
+|---|---|---|
+| Anonymous | 60 req/min | Public read endpoints |
+| Authenticated | 300 req/min | Protected endpoints |
+| Auth | 10 req/min | `/auth/*` login/nonce endpoints |
+| Trading | 30 req/min | `/bets`, `/markets/*/prices` |
+
+---
+
+## Smart Contracts
+
+### Market Contract (`contracts/contracts/market/`)
+
+Soroban contract implementing LMSR prediction markets.
+
+- Create markets with multiple outcome options
+- Buy/sell shares with LMSR pricing
+- Resolve markets and distribute payouts
+- XLM token integration
+
+```bash
+cd contracts
+stellar contract build
+stellar contract deploy \
+  --wasm target/wasm32-unknown-unknown/release/market.wasm \
+  --network testnet
+```
+
+### Challenge Contract (`contracts/contracts/challenge/`)
+
+Direct 1v1 wager contract.
+
+- Create open or targeted challenges
+- Accept with matching stake
+- Resolve with winner determination
+- Automatic payout distribution
+
+```bash
+stellar contract deploy \
+  --wasm target/wasm32-unknown-unknown/release/challenge.wasm \
+  --network testnet
+```
+
+---
+
+## Testing
+
+### Backend
+
+```bash
+cd backend
+cargo test
+```
+
+### Contracts
+
+```bash
+cd contracts
+cargo test
+```
+
+### Frontend (unit)
+
+```bash
+cd frontend
+npm test
+```
+
+### Frontend (e2e)
+
+```bash
+cd frontend
+npm run test:e2e
+```
+
+---
+
+## Production Deployment
+
+### Server Setup
+
+```bash
+sudo apt update && sudo apt install -y \
+  build-essential pkg-config libssl-dev libpq-dev \
+  nodejs npm redis-server postgresql
+
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Backend
+
+```bash
+cd backend
+cargo build --release
+sqlx migrate run
+./target/release/backend
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+cp .env.production .env.local   # set VITE_API_URL
+npm run build
+# Serve frontend/dist/ with nginx or any static host
+```
+
+### Nginx
 
 ```nginx
 server {
     listen 443 ssl;
     server_name polypulse.co.ke;
 
-    # Frontend static files
     root /var/www/polypulse/frontend/dist;
     index index.html;
     try_files $uri $uri/ /index.html;
 
-    # API proxy
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
-    # WebSocket proxy
     location /ws {
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
@@ -171,146 +371,17 @@ server {
 }
 ```
 
-### 5. Docker Compose
-
-```bash
-# Create .env file with required variables
-cp .env.example .env
-nano .env   # Set POSTGRES_PASSWORD, JWT_SECRET, etc.
-
-docker compose up -d
-```
-
 ---
 
-## Stellar Smart Contracts
-
-### Soroban Market Contract (`contracts/contracts/market/`)
-Stellar Soroban contract implementing LMSR prediction markets.
-
-**Features:**
-- Create prediction markets with multiple options
-- Buy/sell shares using LMSR pricing algorithm
-- Resolve markets and distribute payouts
-- XLM token integration for payments
-
-**Deployment:**
-```bash
-cd contracts
-stellar contract build
-stellar contract deploy \
-    --wasm target/wasm32-unknown-unknown/release/market.wasm \
-    --network testnet
-```
-
-### Soroban Challenge Contract (`contracts/contracts/challenge/`)
-Direct wager contract for 1v1 challenges.
-
-**Features:**
-- Create open or direct challenges
-- Accept challenges with stake matching
-- Resolve challenges with winner determination
-- Automatic payout distribution
-
-**Deployment:**
-```bash
-cd contracts
-stellar contract build
-stellar contract deploy \
-    --wasm target/wasm32-unknown-unknown/release/challenge.wasm \
-    --network testnet
-```
-
----
-
-## Authentication
-
-All authentication is wallet-based using Freighter (Stellar wallet):
-
-1. **Frontend** requests a nonce from `/api/v1/auth/nonce`
-2. **User** signs a message containing the nonce with their Freighter wallet
-3. **Frontend** sends `public_key + signature + message` to `/api/v1/auth/login`
-4. **Backend** verifies the ed25519 signature, marks nonce as used
-5. **Backend** issues JWT access + refresh tokens
-6. **Frontend** stores tokens in `localStorage` and attaches `Authorization: Bearer <token>` to all API requests
-7. **WebSocket** connections pass `?token=<jwt>` in the URL query string
-
----
-
-## API Rate Limits
-
-| Endpoint type | Limit |
-|---|---|
-| Anonymous | 60 req/min |
-| Authenticated | 300 req/min |
-| Auth (login/nonce) | 10 req/min |
-| Trading (bet/sell) | 30 req/min |
-
----
-
-## Security Notes
+## Security
 
 - JWT access tokens expire in **30 minutes**; refresh tokens in **7 days** with rotation
 - WebSocket connections require a valid JWT — unauthenticated connections are rejected
-- CORS is restricted to explicit origins — wildcard (`*`) is never allowed
-- All security headers (HSTS, XSS protection, CSP, X-Frame-Options) are enabled in production
+- CORS is restricted to explicit origins — wildcard `*` is never used in production
+- All security headers enabled (HSTS, XSS protection, CSP, X-Frame-Options)
 - Wallet nonces are single-use and expire after **5 minutes**
-- Rate limiting is applied at the API layer on all sensitive endpoints
-
----
-
-## Project Structure
-
-```
-polypulse/
-├── backend/                  # Rust/Axum backend
-│   ├── src/
-│   │   ├── routes/           # API endpoints
-│   │   ├── models/           # Database models
-│   │   ├── services/         # Business logic
-│   │   └── middleware/       # Auth, CORS, logging, rate limiting
-│   └── Cargo.toml
-├── contracts/                # Stellar smart contracts (Soroban)
-│   └── contracts/
-│       ├── market/           # LMSR prediction market
-│       └── challenge/        # 1v1 wager contract
-├── frontend/                 # React + TypeScript frontend
-│   ├── src/
-│   │   ├── components/       # Navbar, Footer, ProtectedRoute, WalletModal
-│   │   ├── context/          # Auth, Wallet contexts
-│   │   ├── pages/            # All route pages
-│   │   ├── config/           # Stellar, API config
-│   │   ├── lib/              # Stellar helper
-│   │   └── hooks/            # useWalletDetection, useWagers, useChat
-│   └── package.json
-├── migrations/               # SQL migrations
-├── scripts/                  # Deployment and setup scripts
-├── docker-compose.yml
-├── .env.example              # Template — copy to .env
-└── README.md
-```
-
----
-
-## Testing
-
-### Backend Tests
-```bash
-cd backend
-cargo test
-```
-
-### Contract Tests
-```bash
-cd contracts
-cargo test
-```
-
-### Frontend Tests
-```bash
-cd frontend
-npm test
-```
+- Rate limiting applied at the API layer via Redis sliding window
+- PostgreSQL and Redis ports bound to `127.0.0.1` only in Docker
 
 ---
 

@@ -618,27 +618,39 @@ fn verify_near_signature(public_key: &str, message: &str, signature: &str) -> Ap
         .map_err(|_| AppError::Unauthorized("Signature verification failed".into()))
 }
 
-fn verify_stellar_signature(public_key: &str, _message: &str, signature: &str) -> AppResult<()> {
+fn verify_stellar_signature(public_key: &str, message: &str, signature: &str) -> AppResult<()> {
+    use ed25519_dalek::{Signature, VerifyingKey, Verifier};
     use stellar_strkey::ed25519::PublicKey as StellarPublicKey;
 
-    // Validate the public key is a valid Stellar key
-    StellarPublicKey::from_string(public_key)
+    // Decode the Stellar strkey-encoded public key (G...) into raw ed25519 bytes
+    let stellar_pk = StellarPublicKey::from_string(public_key)
         .map_err(|_| AppError::Unauthorized("Invalid Stellar public key".into()))?;
 
-    // The frontend sends a signed Stellar transaction XDR (not a raw ed25519 signature).
-    // We verify the XDR is non-empty and was produced by Freighter for this public key.
-    // Full XDR signature verification requires parsing the transaction envelope.
-    // For now we verify the nonce was valid (proves the user initiated the request)
-    // and that the XDR is a non-empty base64 string (proves Freighter signed something).
+    let key_arr: [u8; 32] = stellar_pk.0;
+    let verifying_key = VerifyingKey::from_bytes(&key_arr)
+        .map_err(|_| AppError::Unauthorized("Invalid Stellar public key bytes".into()))?;
+
     if signature.is_empty() {
         return Err(AppError::Unauthorized("Empty signature".into()));
     }
 
-    // Verify it's valid base64 (Freighter always returns base64 XDR)
-    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, signature)
-        .map_err(|_| AppError::Unauthorized("Signature is not valid base64 XDR".into()))?;
+    // Decode the base64-encoded signature
+    let sig_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, signature)
+        .map_err(|_| AppError::Unauthorized("Signature is not valid base64".into()))?;
 
-    Ok(())
+    if sig_bytes.len() != 64 {
+        return Err(AppError::Unauthorized("Signature must be 64 bytes".into()));
+    }
+
+    let sig_arr: [u8; 64] = sig_bytes
+        .try_into()
+        .map_err(|_| AppError::Unauthorized("Signature length mismatch".into()))?;
+    let sig = Signature::from_bytes(&sig_arr);
+
+    // Verify the ed25519 signature over the raw message bytes
+    verifying_key
+        .verify(message.as_bytes(), &sig)
+        .map_err(|_| AppError::Unauthorized("Stellar signature verification failed".into()))
 }
 
 fn extract_nonce(message: &str) -> Option<String> {

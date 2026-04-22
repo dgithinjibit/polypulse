@@ -51,10 +51,14 @@ use tower::ServiceBuilder;
 
 // Tower-HTTP: HTTP-specific middleware
 use tower_http::{
-    compression::CompressionLayer,  // Compresses responses (gzip/brotli) to save bandwidth
-    cors::{Any, CorsLayer},         // CORS headers for browser security
-    trace::TraceLayer,              // HTTP request/response logging
+    compression::CompressionLayer,
+    cors::CorsLayer,
+    set_header::SetResponseHeaderLayer,
+    trace::TraceLayer,
 };
+
+// HTTP types for security headers
+use axum::http::{header, HeaderValue};
 
 // Local imports
 use crate::{
@@ -73,14 +77,31 @@ use crate::{
 // ============================================================
 pub fn build_router(state: AppState) -> Router {
     // ---- CORS CONFIGURATION ----
-    // CORS (Cross-Origin Resource Sharing) controls which websites can make
-    // requests to our API. Browsers enforce this for security.
-    // In production, you'd restrict allow_origin to specific domains.
-    // Currently using Any for development flexibility.
-    let cors = CorsLayer::new()
-        .allow_origin(Any)   // Allow requests from any origin (tighten in production!)
-        .allow_methods(Any)  // Allow GET, POST, PUT, DELETE, etc.
-        .allow_headers(Any); // Allow any headers (including Authorization)
+    // Parse allowed origins from config (CORS_ORIGINS env var, comma-separated).
+    // Falls back to permissive Any only if no origins are configured (dev mode).
+    let cors = {
+        use tower_http::cors::{AllowOrigin, Any};
+        use axum::http::HeaderValue;
+
+        let origins: Vec<HeaderValue> = state
+            .config()
+            .cors_origins
+            .iter()
+            .filter_map(|o| o.parse().ok())
+            .collect();
+
+        if origins.is_empty() {
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any)
+        } else {
+            CorsLayer::new()
+                .allow_origin(AllowOrigin::list(origins))
+                .allow_methods(Any)
+                .allow_headers(Any)
+        }
+    };
 
     // ---- AUTH ROUTES (10 req/min rate limit) ----
     // Authentication endpoints have the strictest rate limiting to prevent
@@ -316,20 +337,36 @@ pub fn build_router(state: AppState) -> Router {
         // .merge(mpesa_callback) // M-Pesa callback (disabled)
 
         // Apply global middleware to ALL routes
-        // ServiceBuilder chains middleware in order (first = outermost = runs first)
         .layer(
             ServiceBuilder::new()
-                // TraceLayer: logs every HTTP request and response (method, path, status, duration)
                 .layer(TraceLayer::new_for_http())
-
-                // CompressionLayer: compresses responses with gzip/brotli to reduce bandwidth
                 .layer(CompressionLayer::new())
-
-                // CorsLayer: adds CORS headers to allow browser cross-origin requests
                 .layer(cors)
-
-                // request_id: adds a unique X-Request-ID header to every request
-                // Useful for correlating logs across multiple services
+                // Security headers
+                .layer(SetResponseHeaderLayer::overriding(
+                    header::STRICT_TRANSPORT_SECURITY,
+                    HeaderValue::from_static("max-age=63072000; includeSubDomains; preload"),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    header::X_FRAME_OPTIONS,
+                    HeaderValue::from_static("DENY"),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    header::X_CONTENT_TYPE_OPTIONS,
+                    HeaderValue::from_static("nosniff"),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    header::CONTENT_SECURITY_POLICY,
+                    HeaderValue::from_static("default-src 'none'; frame-ancestors 'none'"),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    header::REFERRER_POLICY,
+                    HeaderValue::from_static("strict-origin-when-cross-origin"),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    header::HeaderName::from_static("permissions-policy"),
+                    HeaderValue::from_static("geolocation=(), microphone=(), camera=()"),
+                ))
                 .layer(middleware::from_fn(mw::request_id::request_id)),
         )
 
