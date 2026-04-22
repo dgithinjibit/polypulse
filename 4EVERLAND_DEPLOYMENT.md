@@ -1,5 +1,22 @@
 # 🚀 4everland Deployment Guide for PolyPulse
 
+## 📋 Quick Reference - Environment Variables
+
+Copy these EXACT values when deploying to 4everland:
+
+| Variable | Value |
+|----------|-------|
+| `VITE_API_URL` | `https://polypulse-backend-436v.onrender.com` |
+| `VITE_API_HOST` | `polypulse-backend-436v.onrender.com` |
+| `VITE_WS_URL` | `wss://polypulse-backend-436v.onrender.com` |
+| `VITE_STELLAR_NETWORK` | `testnet` |
+| `VITE_HORIZON_URL` | `https://horizon-testnet.stellar.org` |
+| `VITE_SOROBAN_RPC_URL` | `https://soroban-testnet.stellar.org` |
+| `VITE_STELLAR_MARKET_CONTRACT_ID` | *(leave empty for now)* |
+| `VITE_STELLAR_CHALLENGE_CONTRACT_ID` | *(leave empty for now)* |
+
+---
+
 ## Quick Start - Deploy in 5 Minutes
 
 **4everland Link**: https://dashboard.4everland.org
@@ -41,25 +58,25 @@
 
 ## Step 4: Add Environment Variables (1 minute)
 
-Click **"Environment Variables"** and add these:
+Click **"Environment Variables"** and add these **EXACT VALUES**:
 
 ```bash
-# Backend API Configuration
-VITE_API_URL=https://your-backend-url.com
-VITE_API_HOST=your-backend-url.com
-VITE_WS_URL=wss://your-backend-url.com
+# Backend API Configuration (Render)
+VITE_API_URL=https://polypulse-backend-436v.onrender.com
+VITE_API_HOST=polypulse-backend-436v.onrender.com
+VITE_WS_URL=wss://polypulse-backend-436v.onrender.com
 
 # Stellar Network Configuration
 VITE_STELLAR_NETWORK=testnet
 VITE_HORIZON_URL=https://horizon-testnet.stellar.org
 VITE_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
 
-# Smart Contract IDs (optional - add when you have them)
-VITE_STELLAR_MARKET_CONTRACT_ID=your-contract-id
-VITE_STELLAR_CHALLENGE_CONTRACT_ID=your-contract-id
+# Smart Contract IDs (leave empty for now - add when deployed)
+VITE_STELLAR_MARKET_CONTRACT_ID=
+VITE_STELLAR_CHALLENGE_CONTRACT_ID=
 ```
 
-**Important**: Replace `your-backend-url.com` with your actual backend URL!
+**Note**: The contract IDs are empty because you haven't deployed your Stellar smart contracts yet. You can add them later.
 
 ---
 
@@ -102,10 +119,16 @@ After deployment, you'll get:
 5. Wait for DNS propagation (~5-30 minutes)
 
 ### Update Backend CORS
-Add your 4everland domain to backend CORS:
-```rust
-CORS_ALLOWED_ORIGINS=https://[your-project].4everland.app,https://polypulse.co.ke
-```
+Your backend CORS is already configured, but after you get your 4everland URL, add it to Render:
+
+1. Go to your Render dashboard
+2. Select your backend service
+3. Go to **Environment** tab
+4. Update `CORS_ALLOWED_ORIGINS` to include your 4everland domain:
+   ```
+   CORS_ALLOWED_ORIGINS=https://[your-project].4everland.app,https://polypulse.co.ke,https://www.polypulse.co.ke
+   ```
+5. Save and redeploy
 
 ---
 
