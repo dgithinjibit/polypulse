@@ -1,0 +1,84 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "backend"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Web framework
+axum = { version = "0.7", features = ["ws", "macros"] }
+axum-extra = { version = "0.9", features = ["typed-header"] }
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["trace", "cors", "compression-full"] }
+headers = "0.4"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio-native-tls", "postgres", "uuid", "chrono", "migrate", "bigdecimal"] }
+bigdecimal = { version = "0.4", features = ["serde"] }
+
+# Redis
+deadpool-redis = "0.14"
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+
+# Configuration
+dotenvy = "0.15"
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Validation
+validator = { version = "0.16", features = ["derive"] }
+
+# JWT
+jsonwebtoken = "9"
+
+# HTTP client
+reqwest = { version = "0.11", features = ["json"] }
+
+# Password hashing
+argon2 = "0.5"
+
+# Random
+rand = "0.8"
+
+# Regex
+regex = "1"
+
+# Futures
+futures = "0.3"
+
+# Cryptography
+ring = "0.17"
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.21"
+
+# ed25519 signature verification (Stellar wallet auth)
+ed25519-dalek = { version = "2", features = ["serde"] }
+
+# Stellar strkey decoding (for Stellar public key verification)
+stellar-strkey = "0.0.8"
+
+# Email
+lettre = { version = "0.10", features = ["tokio1-native-tls", "builder", "smtp-transport"], default-features = false }

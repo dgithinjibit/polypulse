@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Primary Meta Tags -->
+    <title>PolyPulse - Prediction Markets on Stellar</title>
+    <meta name="title" content="PolyPulse - Prediction Markets on Stellar" />
+    <meta name="description" content="Trade on real-world outcomes. Buy and sell shares in prediction markets powered by Stellar blockchain." />
+    <meta name="keywords" content="prediction markets, stellar, blockchain, trading, dapp, web3" />
+    <meta name="theme-color" content="#7c3aed" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://polypulse.co.ke/" />
+    <meta property="og:title" content="PolyPulse - Prediction Markets on Stellar" />
+    <meta property="og:description" content="Trade on real-world outcomes. Buy and sell shares in prediction markets powered by Stellar blockchain." />
+    <meta property="og:image" content="/og-image.png" />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://polypulse.co.ke/" />
+    <meta property="twitter:title" content="PolyPulse - Prediction Markets on Stellar" />
+    <meta property="twitter:description" content="Trade on real-world outcomes. Buy and sell shares in prediction markets powered by Stellar blockchain." />
+    <meta property="twitter:image" content="/og-image.png" />
+    
+    <!-- Performance Optimization -->
+    <link rel="preconnect" href="https://horizon-testnet.stellar.org" />
+    <link rel="preconnect" href="https://soroban-testnet.stellar.org" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Loading screen while React loads -->
+    <style>
+      #loading-screen {
+        position: fixed;
+        inset: 0;
+        background: linear-gradient(135deg, #0f0a1e 0%, #1a0f2e 50%, #0a1628 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+      #loading-screen .spinner {
+        width: 48px;
+        height: 48px;
+        border: 4px solid rgba(124, 58, 237, 0.2);
+        border-top-color: #7c3aed;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      .loaded #loading-screen {
+        display: none;
+      }
+    </style>
+    <div id="loading-screen">
+      <div class="spinner"></div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "Auto-Test Wallet Connection",
+  "version": "1.0.0",
+  "description": "Automatically runs E2E tests when frontend files change to validate Stellar wallet connection flow",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "frontend/src/**/*.tsx",
+      "frontend/src/**/*.ts",
+      "frontend/src/**/*.css"
+    ]
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "cd frontend && npm run test:e2e 2>&1 | tee test-output.log"
+  }
+}

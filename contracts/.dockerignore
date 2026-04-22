@@ -1,0 +1,6 @@
+target/
+.git/
+*.wasm
+*.md
+scripts/
+frontend-integration/
