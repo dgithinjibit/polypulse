@@ -1,6 +1,6 @@
 # Rust build artifacts
 target/
-Cargo.lock
+# Cargo.lock  # Removed to allow committing for Docker builds
 
 # Contract deployment artifacts
 .contract-ids-*.json
