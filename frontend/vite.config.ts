@@ -37,7 +37,7 @@ export default defineConfig({
           // Split React vendor libs
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           // Split other heavy dependencies
-          'vendor': ['axios', 'zustand'],
+          'vendor': ['axios'],
         },
       },
     },
