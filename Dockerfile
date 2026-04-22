@@ -24,6 +24,7 @@ RUN cargo fetch
 # Now copy the real source and build
 COPY backend/src ./src
 COPY backend/migrations ./migrations
+COPY backend/.sqlx ./.sqlx
 
 ENV SQLX_OFFLINE=true
 RUN cargo build --release
