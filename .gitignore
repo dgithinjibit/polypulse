@@ -66,3 +66,20 @@ frontend/test-results/
 .kiro/CLEANUP_AND_SECURITY_AUDIT.md
 rust/target/
 backend/target/
+
+# ─── Deployment Configs (Keep only 4everland) ────────────────────────────────
+.fleek.json
+.spheron/
+.vercel/
+.netlify/
+
+# ─── Old Documentation (Cleaned up) ──────────────────────────────────────────
+WALLET_FIX_SUMMARY.md
+PERFORMANCE_IMPROVEMENTS.md
+DEPLOY_STAGING.md
+DEPLOY_PRODUCTION.md
+FLEEK_DEPLOYMENT.md
+SPHERON_DEPLOYMENT.md
+PRE_DEPLOYMENT_CHECKLIST.md
+DEPLOYMENT_READY_SUMMARY.md
+QUICK_START_FLEEK.md

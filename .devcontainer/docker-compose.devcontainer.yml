@@ -1,9 +1,0 @@
-version: '3.8'
-
-# Dev container override — mounts source into the backend service
-# so VS Code can attach and edit files live.
-services:
-  backend:
-    volumes:
-      - ..:/workspace:cached
-    command: sleep infinity   # keep container alive; VS Code manages the process
