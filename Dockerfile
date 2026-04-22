@@ -1,7 +1,7 @@
 # Multi-stage build for PolyPulse
 
 # ── Stage 1: Build Soroban contracts ─────────────────────────────────────────
-FROM rust:1.79-slim AS soroban-builder
+FROM rust:1.85-slim AS soroban-builder
 
 WORKDIR /soroban
 
@@ -45,7 +45,7 @@ COPY --from=soroban-builder /soroban/target/wasm32-unknown-unknown/release/*.opt
 RUN npm run build
 
 # ── Stage 3: Build Rust backend ───────────────────────────────────────────────
-FROM rust:1.79-slim AS backend-builder
+FROM rust:1.85-slim AS backend-builder
 
 WORKDIR /app
 
