@@ -1,6 +1,6 @@
 # ─── Rust ────────────────────────────────────────────────────────────────────
 target/
-Cargo.lock
+backend/target/
 !contracts/Cargo.lock
 !backend/Cargo.lock
 **/*.rs.bk
@@ -67,7 +67,6 @@ frontend/test-results/
 .kiro/specs/
 .kiro/CLEANUP_AND_SECURITY_AUDIT.md
 rust/target/
-backend/target/
 
 # ─── Deployment Configs (Keep only 4everland) ────────────────────────────────
 .fleek.json
