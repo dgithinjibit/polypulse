@@ -3,7 +3,7 @@
 # The frontend is served separately (static hosting).
 
 # ── Stage 1: Build Rust backend ───────────────────────────────────────────────
-FROM rust:1.85-slim AS backend-builder
+FROM rust:latest AS backend-builder
 
 WORKDIR /app
 
