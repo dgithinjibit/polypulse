@@ -20,6 +20,8 @@ export default defineConfig({
       // Polyfill global, process, Buffer — needed by Stellar SDK
       globals: { global: true, process: true, Buffer: true },
       protocolImports: true,
+      // Exclude eval-based polyfills to comply with strict CSP on IPFS gateways
+      exclude: ['vm'],
     }),
   ],
   resolve: {

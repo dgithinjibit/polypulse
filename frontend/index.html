@@ -30,6 +30,18 @@
     <!-- Performance Optimization -->
     <link rel="preconnect" href="https://horizon-testnet.stellar.org" />
     <link rel="preconnect" href="https://soroban-testnet.stellar.org" />
+    
+    <!-- Content Security Policy -->
+    <!-- 'wasm-unsafe-eval' is required by the Stellar SDK for WebAssembly -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'wasm-unsafe-eval';
+      style-src 'self' 'unsafe-inline';
+      connect-src 'self' https://polypulse-backend-436v.onrender.com wss://polypulse-backend-436v.onrender.com https://horizon-testnet.stellar.org https://soroban-testnet.stellar.org;
+      img-src 'self' data: blob:;
+      font-src 'self' data:;
+      worker-src 'self' blob:;
+    " />
   </head>
   <body>
     <div id="root"></div>
