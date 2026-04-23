@@ -14,30 +14,24 @@ export function Footer() {
 
           {/* Nav Links */}
           <nav className="flex items-center gap-8 text-sm">
-            <a
-              href="https://polypulse.co.ke/terms"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              to="/terms"
               className="text-gray-400 hover:text-cyan-400 transition-colors duration-200"
             >
               Terms
-            </a>
-            <a
-              href="https://polypulse.co.ke/privacy"
-              target="_blank"
-              rel="noopener noreferrer"
+            </Link>
+            <Link
+              to="/privacy"
               className="text-gray-400 hover:text-cyan-400 transition-colors duration-200"
             >
               Privacy
-            </a>
-            <a
-              href="https://polypulse.co.ke/faq"
-              target="_blank"
-              rel="noopener noreferrer"
+            </Link>
+            <Link
+              to="/faq"
               className="text-gray-400 hover:text-cyan-400 transition-colors duration-200"
             >
               FAQ
-            </a>
+            </Link>
           </nav>
 
           {/* Social Icons */}

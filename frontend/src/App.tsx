@@ -59,6 +59,8 @@ import Notifications from './pages/Notifications' // User notifications - /notif
 import Profile from './pages/Profile'             // User profile - /profile (protected)
 import SocialLogin from './pages/SocialLogin'     // Post-connect onboarding - /social-login
 import Help from './pages/Help'                   // Help/FAQ page - /help
+import Terms from './pages/Terms'                 // Terms page - /terms
+import Privacy from './pages/Privacy'             // Privacy page - /privacy
 
 // ============================================================
 // COMPONENT: App
@@ -97,9 +99,14 @@ export default function App() {
                 {/* Post-wallet-connection onboarding/profile setup */}
                 <Route path="/social-login" element={<SocialLogin />} />
 
-                {/* Help and FAQ - /help or /help/specific-topic */}
+                {/* Help and FAQ - /help, /faq, or /help/specific-topic */}
                 <Route path="/help" element={<Help />} />
+                <Route path="/faq" element={<Help />} />
                 <Route path="/help/:topic" element={<Help />} />
+
+                {/* Legal pages */}
+                <Route path="/terms" element={<Terms />} />
+                <Route path="/privacy" element={<Privacy />} />
 
                 {/* Browse all prediction markets */}
                 <Route path="/markets" element={<Markets />} />
