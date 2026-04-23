@@ -46,7 +46,7 @@ const RUST_BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 // ============================================================
 const rustApiClient: AxiosInstance = axios.create({
   baseURL: RUST_BACKEND_URL,  // Direct URL to Rust backend
-  timeout: 10000,             // 10 second timeout for all requests
+  timeout: 60000,             // 60 second timeout for all requests (handles Render cold starts)
   headers: {
     'Content-Type': 'application/json',
   },
