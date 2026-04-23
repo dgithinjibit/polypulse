@@ -33,14 +33,16 @@
     
     <!-- Content Security Policy -->
     <!-- 'wasm-unsafe-eval' is required by the Stellar SDK for WebAssembly -->
+    <!-- chrome-extension: and moz-extension: allow browser wallet extensions -->
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'self';
-      script-src 'self' 'wasm-unsafe-eval';
+      script-src 'self' 'wasm-unsafe-eval' chrome-extension: moz-extension:;
       style-src 'self' 'unsafe-inline';
       connect-src 'self' https://polypulse-backend-436v.onrender.com wss://polypulse-backend-436v.onrender.com https://horizon-testnet.stellar.org https://soroban-testnet.stellar.org;
       img-src 'self' data: blob:;
       font-src 'self' data:;
       worker-src 'self' blob:;
+      frame-src 'self' chrome-extension: moz-extension:;
     " />
   </head>
   <body>
