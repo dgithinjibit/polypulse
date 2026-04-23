@@ -52,7 +52,10 @@ Copy these EXACT values when deploying to 4everland:
 | **Build Command** | `npm run build` |
 | **Output Directory** | `dist` |
 | **Install Command** | `npm install` |
-| **Node Version** | 18.x |
+| **Node Version** | **20.x** (CRITICAL - must be 20 or higher!) |
+
+⚠️ **CRITICAL**: If you don't see a Node version selector, add this to your build settings:
+- Set environment variable: `NODE_VERSION=20` or `NODE_VERSION=20.18.0`
 
 ---
 

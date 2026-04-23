@@ -28,7 +28,7 @@ bigdecimal = { version = "0.4", features = ["serde"] }
 
 # Redis
 deadpool-redis = "0.14"
-redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager", "tokio-native-tls-comp"] }
 
 # Configuration
 dotenvy = "0.15"
