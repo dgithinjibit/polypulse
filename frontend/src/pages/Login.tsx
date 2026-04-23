@@ -1,14 +1,7 @@
-import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useStellarWallet } from '../context/StellarWalletContext'
 
 export default function Login() {
-  const navigate = useNavigate()
-  const { isConnected, isLoading, isAuthenticating, connectWallet } = useStellarWallet()
-
-  useEffect(() => {
-    if (isConnected) navigate('/social-login', { replace: true })
-  }, [isConnected, navigate])
+  const { isLoading, isAuthenticating, connectWallet } = useStellarWallet()
 
   const handleConnect = async () => {
     try {
