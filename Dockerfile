@@ -37,12 +37,21 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     ca-certificates \
     curl \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install sqlx-cli for running migrations
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 RUN cargo install sqlx-cli --no-default-features --features postgres
+
+# Clean up build dependencies to reduce image size
+RUN apt-get remove -y build-essential pkg-config libssl-dev libpq-dev curl && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
