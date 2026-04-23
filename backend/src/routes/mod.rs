@@ -96,8 +96,21 @@ pub fn build_router(state: AppState) -> Router {
                 .allow_methods(Any)
                 .allow_headers(Any)
         } else {
+            // Use a predicate so we can match both exact origins (from CORS_ORIGINS env var)
+            // and wildcard patterns like *.ipfs.4everland.app (which change hash on every deploy).
+            let origins_clone = origins.clone();
             CorsLayer::new()
-                .allow_origin(AllowOrigin::list(origins))
+                .allow_origin(AllowOrigin::predicate(move |origin: &HeaderValue, _| {
+                    // Allow any exact match from the configured list
+                    if origins_clone.contains(origin) {
+                        return true;
+                    }
+                    // Allow any 4everland IPFS deployment subdomain
+                    origin
+                        .to_str()
+                        .map(|s| s.ends_with(".ipfs.4everland.app"))
+                        .unwrap_or(false)
+                }))
                 .allow_methods(Any)
                 .allow_headers(Any)
         }
