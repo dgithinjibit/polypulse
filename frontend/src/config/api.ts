@@ -174,6 +174,8 @@ rustApiClient.interceptors.response.use(
       // Note: using plain axios (not rustApiClient) to avoid interceptor loops
       const response = await axios.post(`${RUST_BACKEND_URL}/api/v1/auth/refresh`, {
         refresh: refreshToken,
+      }, {
+        timeout: 60000,  // 60 second timeout for refresh request
       })
 
       // Extract the new tokens from the response
