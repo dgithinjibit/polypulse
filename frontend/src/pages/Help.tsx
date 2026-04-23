@@ -1,9 +1,11 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
+import LegalPageNav from '../components/LegalPageNav'
 
 export default function Help() {
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <LegalPageNav currentPage="faq" />
       <h1 className="text-3xl font-bold text-white mb-8">Help & Support</h1>
 
       {/* Wallet Connection Issues */}
@@ -186,7 +188,7 @@ export default function Help() {
           If you're still experiencing issues, please contact our support team:
         </p>
         <ul className="list-disc list-inside text-gray-300 space-y-2 ml-4">
-          <li>Email: <a href="mailto:support@polypulse.app" className="text-purple-400 hover:underline">support@polypulse.app</a></li>
+          <li>Email: <a href="mailto:supportpolypulse@gmail.com" className="text-purple-400 hover:underline">supportpolypulse@gmail.com</a></li>
           <li>Twitter: <a href="https://twitter.com/polypulse" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">@polypulse</a></li>
           <li>Discord: <a href="https://discord.gg/polypulse" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">Join our community</a></li>
         </ul>

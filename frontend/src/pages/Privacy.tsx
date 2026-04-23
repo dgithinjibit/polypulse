@@ -1,6 +1,9 @@
+import LegalPageNav from '../components/LegalPageNav'
+
 export default function Privacy() {
   return (
     <div className="max-w-6xl mx-auto px-6 py-10 text-gray-100">
+      <LegalPageNav currentPage="privacy" />
       <div className="bg-slate-950/90 border border-slate-800 rounded-3xl p-8 shadow-xl shadow-black/20">
         <h1 className="text-4xl font-bold mb-4 text-white">Privacy Policy</h1>
         <p className="text-sm text-slate-400 mb-8">Last Updated: April 23, 2026</p>
@@ -94,7 +97,7 @@ export default function Privacy() {
             We may update this Policy. We will notify you of material changes.
           </p>
           <p className="text-slate-300 leading-7">
-            For privacy questions, email <a href="mailto:privacy@polypulse.app" className="text-cyan-400 hover:underline">privacy@polypulse.app</a>.
+            For privacy questions, email <a href="mailto:supportpolypulse@gmail.com" className="text-cyan-400 hover:underline">supportpolypulse@gmail.com</a>.
           </p>
         </section>
       </div>
