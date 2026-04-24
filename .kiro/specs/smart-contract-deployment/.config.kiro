@@ -1,0 +1,7 @@
+{
+  "specType": "feature",
+  "workflowType": "requirements-first",
+  "featureName": "smart-contract-deployment",
+  "createdAt": "2026-04-24T19:00:00Z",
+  "status": "ready"
+}

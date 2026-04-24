@@ -1,0 +1,7 @@
+{
+  "specType": "bugfix",
+  "workflowType": "requirements-first",
+  "featureName": "backend-compilation-fix",
+  "createdAt": "2026-04-24T19:00:00Z",
+  "status": "ready"
+}
