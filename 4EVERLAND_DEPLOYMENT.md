@@ -49,10 +49,15 @@ Copy these EXACT values when deploying to 4everland:
 |---------|-------|
 | **Framework Preset** | Vite |
 | **Root Directory** | `frontend` |
-| **Build Command** | `npm run build` |
+| **Build Command** | `npm run build` (NOT `npm run build:check`) |
 | **Output Directory** | `dist` |
 | **Install Command** | `npm install` |
 | **Node Version** | **20.x** (CRITICAL - must be 20 or higher!) |
+
+⚠️ **CRITICAL BUILD COMMAND**: Use `npm run build` (which runs `vite build` only). 
+- DO NOT use `tsc && vite build` or `npm run build:check`
+- Vite has its own type checking via esbuild which is faster and more compatible
+- The `build:check` script is available for local development if you want strict type checking
 
 ⚠️ **CRITICAL**: If you don't see a Node version selector, add this to your build settings:
 - Set environment variable: `NODE_VERSION=20` or `NODE_VERSION=20.18.0`
