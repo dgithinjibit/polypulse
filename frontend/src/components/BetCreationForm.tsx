@@ -4,7 +4,8 @@ import { useStellarWallet } from '../context/StellarWalletContext';
 import { stellar } from '../lib/stellar-helper';
 import rustApiClient from '../config/api';
 import { handleError, handleSuccess } from '../lib/error-handler';
-import LoadingOverlay from './LoadingOverlay';
+import { TransactionModal } from './TransactionModal';
+import { useTransaction } from '../hooks/useTransaction';
 
 interface BetCreationFormProps {
   onSuccess: (betId: string, shareableUrl: string) => void;
@@ -19,6 +20,13 @@ interface BetFormData {
 
 export function BetCreationForm({ onSuccess, onCancel }: BetCreationFormProps) {
   const { publicKey } = useStellarWallet();
+  const transaction = useTransaction({
+    onSuccess: (txHash) => {
+      // Transaction confirmed, now create backend record
+      createBackendRecord(txHash);
+    },
+    showToasts: true,
+  });
   
   const [formData, setFormData] = useState<BetFormData>({
     question: '',
@@ -26,10 +34,13 @@ export function BetCreationForm({ onSuccess, onCancel }: BetCreationFormProps) {
     endTime: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successData, setSuccessData] = useState<{ betId: string; shareableUrl: string } | null>(null);
+  const [pendingTxData, setPendingTxData] = useState<{
+    stakeInStroops: number;
+    endTimeTimestamp: number;
+    urlHash: string;
+  } | null>(null);
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -68,6 +79,34 @@ export function BetCreationForm({ onSuccess, onCancel }: BetCreationFormProps) {
     return Object.keys(newErrors).length === 0;
   };
 
+  const createBackendRecord = async (txHash: string) => {
+    if (!pendingTxData) return;
+
+    try {
+      // Call backend API to create bet record
+      const response = await rustApiClient.post('/api/v1/p2p-bets', {
+        question: formData.question,
+        stake_amount: pendingTxData.stakeInStroops,
+        end_time: formData.endTime,
+        shareable_url_hash: pendingTxData.urlHash,
+        transaction_hash: txHash,
+      });
+
+      const { bet_id, shareable_url } = response.data;
+
+      // Show success modal
+      setSuccessData({ betId: bet_id, shareableUrl: shareable_url });
+      setShowSuccessModal(true);
+      
+      handleSuccess('Bet Created', 'Your bet has been created successfully!');
+    } catch (error: any) {
+      console.error('Error creating bet record:', error);
+      handleError(error, {
+        title: 'Failed to Create Bet Record',
+      });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -82,9 +121,6 @@ export function BetCreationForm({ onSuccess, onCancel }: BetCreationFormProps) {
       return;
     }
 
-    setLoading(true);
-    setLoadingMessage('Preparing transaction...');
-
     try {
       // Convert stake to stroops (1 XLM = 10,000,000 stroops)
       const stakeInStroops = Math.floor(parseFloat(formData.stakeAmount) * 10_000_000);
@@ -96,101 +132,82 @@ export function BetCreationForm({ onSuccess, onCancel }: BetCreationFormProps) {
         import.meta.env.VITE_ENCRYPTION_SECRET || 'default_secret'
       );
 
-      setLoadingMessage('Waiting for wallet signature...');
+      // Store data for backend record creation after transaction confirms
+      setPendingTxData({ stakeInStroops, endTimeTimestamp, urlHash });
 
-      // Call smart contract create_bet function via Freighter
-      const contractId = import.meta.env.VITE_STELLAR_P2P_BET_CONTRACT_ID;
-      
-      if (!contractId) {
-        throw new Error('P2P Bet contract ID not configured');
-      }
+      // Execute transaction
+      await transaction.execute(async () => {
+        const contractId = import.meta.env.VITE_STELLAR_P2P_BET_CONTRACT_ID;
+        
+        if (!contractId) {
+          throw new Error('P2P Bet contract ID not configured');
+        }
 
-      // Build the contract call transaction
-      const StellarSdk = await import('@stellar/stellar-sdk');
-      const server = new StellarSdk.Horizon.Server(
-        import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
-          ? 'https://horizon.stellar.org'
-          : 'https://horizon-testnet.stellar.org'
-      );
+        // Build the contract call transaction
+        const StellarSdk = await import('@stellar/stellar-sdk');
+        const server = new StellarSdk.Horizon.Server(
+          import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
+            ? 'https://horizon.stellar.org'
+            : 'https://horizon-testnet.stellar.org'
+        );
 
-      const account = await server.loadAccount(publicKey);
-      const contract = new StellarSdk.Contract(contractId);
+        const account = await server.loadAccount(publicKey);
+        const contract = new StellarSdk.Contract(contractId);
 
-      // Build create_bet operation
-      const transaction = new StellarSdk.TransactionBuilder(account, {
-        fee: StellarSdk.BASE_FEE,
-        networkPassphrase: import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
-          ? StellarSdk.Networks.PUBLIC
-          : StellarSdk.Networks.TESTNET,
-      })
-        .addOperation(
-          contract.call(
-            'create_bet',
-            StellarSdk.Address.fromString(publicKey).toScVal(),
-            StellarSdk.nativeToScVal(formData.question, { type: 'string' }),
-            StellarSdk.nativeToScVal(stakeInStroops, { type: 'i128' }),
-            StellarSdk.nativeToScVal(endTimeTimestamp, { type: 'u64' }),
-            StellarSdk.nativeToScVal(urlHash, { type: 'string' })
+        // Build create_bet operation
+        const txn = new StellarSdk.TransactionBuilder(account, {
+          fee: StellarSdk.BASE_FEE,
+          networkPassphrase: import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
+            ? StellarSdk.Networks.PUBLIC
+            : StellarSdk.Networks.TESTNET,
+        })
+          .addOperation(
+            contract.call(
+              'create_bet',
+              StellarSdk.Address.fromString(publicKey).toScVal(),
+              StellarSdk.nativeToScVal(formData.question, { type: 'string' }),
+              StellarSdk.nativeToScVal(stakeInStroops, { type: 'i128' }),
+              StellarSdk.nativeToScVal(endTimeTimestamp, { type: 'u64' }),
+              StellarSdk.nativeToScVal(urlHash, { type: 'string' })
+            )
           )
-        )
-        .setTimeout(180)
-        .build();
+          .setTimeout(180)
+          .build();
 
-      // Sign transaction with Freighter
-      const { signTransaction } = await import('@stellar/freighter-api');
-      const { signedTxXdr, error: signError } = await signTransaction(transaction.toXDR(), {
-        networkPassphrase: import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
-          ? StellarSdk.Networks.PUBLIC
-          : StellarSdk.Networks.TESTNET,
+        // Sign transaction with Freighter
+        const { signTransaction } = await import('@stellar/freighter-api');
+        const { signedTxXdr, error: signError } = await signTransaction(txn.toXDR(), {
+          networkPassphrase: import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
+            ? StellarSdk.Networks.PUBLIC
+            : StellarSdk.Networks.TESTNET,
+        });
+
+        if (signError) {
+          throw new Error(`Transaction signing failed: ${signError}`);
+        }
+
+        // Submit transaction to Stellar
+        const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(
+          signedTxXdr,
+          import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
+            ? StellarSdk.Networks.PUBLIC
+            : StellarSdk.Networks.TESTNET
+        );
+
+        const result = await server.submitTransaction(signedTransaction as any);
+
+        if (!result.successful) {
+          throw new Error('Transaction failed on Stellar network');
+        }
+
+        return { hash: result.hash };
       });
-
-      if (signError) {
-        throw new Error(`Transaction signing failed: ${signError}`);
-      }
-
-      setLoadingMessage('Confirming on Stellar network...');
-
-      // Submit transaction to Stellar
-      const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(
-        signedTxXdr,
-        import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
-          ? StellarSdk.Networks.PUBLIC
-          : StellarSdk.Networks.TESTNET
-      );
-
-      const result = await server.submitTransaction(signedTransaction as any);
-
-      if (!result.successful) {
-        throw new Error('Transaction failed on Stellar network');
-      }
-
-      setLoadingMessage('Creating bet record...');
-
-      // Call backend API to create bet record
-      const response = await rustApiClient.post('/api/v1/p2p-bets', {
-        question: formData.question,
-        stake_amount: stakeInStroops,
-        end_time: formData.endTime,
-        shareable_url_hash: urlHash,
-        transaction_hash: result.hash,
-      });
-
-      const { bet_id, shareable_url } = response.data;
-
-      // Show success modal
-      setSuccessData({ betId: bet_id, shareableUrl: shareable_url });
-      setShowSuccessModal(true);
-      
-      handleSuccess('Bet Created', 'Your bet has been created successfully!');
     } catch (error: any) {
       console.error('Error creating bet:', error);
       handleError(error, {
         title: 'Bet Creation Failed',
         onRetry: () => handleSubmit(e),
       });
-    } finally {
-      setLoading(false);
-      setLoadingMessage('');
     }
   };
 
@@ -214,7 +231,15 @@ export function BetCreationForm({ onSuccess, onCancel }: BetCreationFormProps) {
 
   return (
     <>
-      <LoadingOverlay isVisible={loading} message={loadingMessage} />
+      {/* Transaction Modal */}
+      <TransactionModal
+        isOpen={transaction.isModalOpen}
+        status={transaction.status}
+        txHash={transaction.txHash}
+        error={transaction.error?.message}
+        onClose={transaction.closeModal}
+        onRetry={transaction.retry}
+      />
 
       {/* Success Modal */}
       {showSuccessModal && successData && (
@@ -323,15 +348,15 @@ export function BetCreationForm({ onSuccess, onCancel }: BetCreationFormProps) {
           <div className="flex gap-4 pt-4">
             <button
               type="submit"
-              disabled={loading}
+              disabled={transaction.status === 'pending' || transaction.status === 'confirming'}
               className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? 'Creating...' : 'Create Bet'}
+              {transaction.status === 'pending' || transaction.status === 'confirming' ? 'Creating...' : 'Create Bet'}
             </button>
             <button
               type="button"
               onClick={onCancel}
-              disabled={loading}
+              disabled={transaction.status === 'pending' || transaction.status === 'confirming'}
               className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
               Cancel

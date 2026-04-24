@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useStellarWallet } from '../context/StellarWalletContext'
+import { useWebSocket } from '../context/WebSocketContext'
 import BalanceSkeleton from './BalanceSkeleton'
+import NotificationBell from './NotificationBell'
 import rustApiClient from '../config/api'
 
 interface Notification {
@@ -16,6 +18,7 @@ function formatAddress(key: string): string {
 
 export default function Navbar() {
   const { publicKey, isConnected, isLoading, isLoadingBalance, balance, connectWallet, disconnect } = useStellarWallet()
+  const { connectionState, isConnected: wsConnected } = useWebSocket()
 
   const navigate = useNavigate()
   const location = useLocation()
@@ -57,6 +60,25 @@ export default function Navbar() {
     </Link>
   )
 
+  // Get connection status indicator color and text
+  // Requirement 8.7: Display connection status indicator in header
+  const getConnectionStatus = () => {
+    switch (connectionState) {
+      case 'connected':
+        return { color: 'bg-green-500', text: 'Live', title: 'Real-time updates active' };
+      case 'connecting':
+        return { color: 'bg-yellow-500', text: 'Connecting', title: 'Connecting to real-time updates' };
+      case 'reconnecting':
+        return { color: 'bg-yellow-500', text: 'Reconnecting', title: 'Reconnecting to real-time updates' };
+      case 'disconnected':
+        return { color: 'bg-gray-400', text: 'Offline', title: 'Real-time updates unavailable' };
+      default:
+        return { color: 'bg-gray-400', text: 'Offline', title: 'Real-time updates unavailable' };
+    }
+  };
+
+  const connectionStatus = getConnectionStatus();
+
   return (
     <nav className="bg-gradient-polypulse shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -75,6 +97,17 @@ export default function Navbar() {
           </div>
 
           <div className="hidden md:flex items-center gap-3">
+            {/* WebSocket Connection Status Indicator */}
+            {isConnected && (
+              <div 
+                className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-lg backdrop-blur-sm"
+                title={connectionStatus.title}
+              >
+                <div className={`w-2 h-2 ${connectionStatus.color} rounded-full ${wsConnected ? 'animate-pulse' : ''}`}></div>
+                <span className="text-xs text-purple-100 font-medium">{connectionStatus.text}</span>
+              </div>
+            )}
+            
             {isConnected ? (
               <>
                 {isLoadingBalance ? (
@@ -84,23 +117,7 @@ export default function Navbar() {
                     <span className="font-bold text-white">{parseFloat(balance.xlm).toFixed(2)}</span> XLM
                   </span>
                 ) : null}
-                <Link 
-                  to="/notifications" 
-                  className="relative text-purple-100 hover:text-white transition-colors p-2 -m-2 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-purple-700 rounded"
-                  aria-label={unread > 0 ? `Notifications (${unread} unread)` : "Notifications"}
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                  </svg>
-                  {unread > 0 && (
-                    <span 
-                      className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center"
-                      aria-hidden="true"
-                    >
-                      {unread}
-                    </span>
-                  )}
-                </Link>
+                <NotificationBell />
                 <Link 
                   to="/profile" 
                   className="text-purple-100 hover:text-white text-sm font-medium font-mono flex items-center gap-1 transition-colors focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-purple-700 rounded px-2 py-1"

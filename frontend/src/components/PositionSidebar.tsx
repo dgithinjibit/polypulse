@@ -1,15 +1,42 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Position } from '../types/p2p-bet';
+import { Position, BetUpdate } from '../types/p2p-bet';
+import { useWebSocket } from '../context/WebSocketContext';
 
 export function PositionSidebar() {
   const navigate = useNavigate();
+  const { subscribeToBet } = useWebSocket();
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchPositions();
   }, []);
+
+  // Subscribe to WebSocket updates for all positions
+  // Requirement 8.5, 11.11: Update position values in real-time
+  useEffect(() => {
+    const unsubscribeFunctions: (() => void)[] = [];
+
+    // Subscribe to each position's bet
+    positions.forEach((position) => {
+      const unsubscribe = subscribeToBet(position.betId, (update: BetUpdate) => {
+        handlePositionUpdate(position.betId, update);
+      });
+      unsubscribeFunctions.push(unsubscribe);
+    });
+
+    // Cleanup: unsubscribe from all positions when component unmounts or positions change
+    return () => {
+      unsubscribeFunctions.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [positions, subscribeToBet]);
+
+  const handlePositionUpdate = (betId: string, update: BetUpdate) => {
+    // Refetch positions to get updated values
+    // In a production app, you might calculate this client-side for better performance
+    fetchPositions();
+  };
 
   const fetchPositions = async () => {
     try {

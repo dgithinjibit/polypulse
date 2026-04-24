@@ -31,6 +31,9 @@ import { AuthProvider } from './context/AuthContext'
 // StellarWalletProvider: provides Stellar wallet state (public key, balance, connect/disconnect)
 import { StellarWalletProvider } from './context/StellarWalletContext'
 
+// WebSocketProvider: provides WebSocket connection state for real-time bet updates
+import { WebSocketProvider } from './context/WebSocketContext'
+
 // Navbar: persistent top navigation bar shown on every page
 import Navbar from './components/Navbar'
 
@@ -62,6 +65,7 @@ import Help from './pages/Help'                   // Help/FAQ page - /help
 import Terms from './pages/Terms'                 // Terms page - /terms
 import Privacy from './pages/Privacy'             // Privacy page - /privacy
 import BetDashboard from './pages/BetDashboard'   // P2P Betting Dashboard - /bets
+import BetDetailPage from './pages/BetDetailPage' // P2P Bet Detail - /bet/:id
 
 // ============================================================
 // COMPONENT: App
@@ -74,11 +78,14 @@ export default function App() {
     <BrowserRouter>
       {/* AuthProvider: makes user auth state available via useAuth() hook */}
       <AuthProvider>
-        {/* StellarWalletProvider: makes wallet state available via useStellarWallet() hook
-            Must be inside BrowserRouter so it can call useNavigate() */}
-        <StellarWalletProvider>
-          {/* Main layout wrapper: light background for markets, dark for other pages */}
-          <div className="min-h-screen bg-white text-gray-900 flex flex-col">
+        {/* WebSocketProvider: makes WebSocket connection state available via useWebSocket() hook
+            Must be inside AuthProvider so it can access user state */}
+        <WebSocketProvider>
+          {/* StellarWalletProvider: makes wallet state available via useStellarWallet() hook
+              Must be inside BrowserRouter so it can call useNavigate() */}
+          <StellarWalletProvider>
+            {/* Main layout wrapper: light background for markets, dark for other pages */}
+            <div className="min-h-screen bg-white text-gray-900 flex flex-col">
             {/* Navbar: always visible at the top, shows wallet status and navigation links */}
             <Navbar />
 
@@ -118,6 +125,9 @@ export default function App() {
                 {/* P2P Betting Dashboard */}
                 <Route path="/bets" element={<BetDashboard />} />
 
+                {/* P2P Bet Detail Page - :id is the bet ID */}
+                <Route path="/bet/:id" element={<BetDetailPage />} />
+
                 {/* Top traders leaderboard */}
                 <Route path="/leaderboard" element={<Leaderboard />} />
 
@@ -150,7 +160,8 @@ export default function App() {
               Positioned fixed on screen, shows success/error/warning messages */}
           <Toaster />
         </StellarWalletProvider>
-      </AuthProvider>
-    </BrowserRouter>
-  )
+      </WebSocketProvider>
+    </AuthProvider>
+  </BrowserRouter>
+)
 } // end App

@@ -4,6 +4,7 @@ pub mod cache;
 pub mod encryption;
 pub mod leaderboard;
 pub mod mpesa;
+pub mod p2p_notifications;
 pub mod paymaster;
 pub mod poll_closer;
 pub mod question_parser;

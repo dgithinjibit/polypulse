@@ -9,7 +9,11 @@ use sqlx::PgPool;
 
 use crate::{
     errors::AppError,
-    services::{encryption::EncryptionService, question_parser::QuestionParser},
+    services::{
+        encryption::EncryptionService, 
+        p2p_notifications::{self, P2PNotificationType},
+        question_parser::QuestionParser
+    },
     state::AppState,
 };
 
@@ -412,6 +416,28 @@ pub async fn join_bet(
     // TODO: Call smart contract join_bet function
     // TODO: Broadcast WebSocket update
     
+    // Notify bet creator that someone joined
+    let bet_details = sqlx::query!(
+        "SELECT question FROM p2p_bets WHERE id = $1",
+        bet_id
+    )
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+    
+    let user_uuid = uuid::Uuid::parse_str(&user_id.to_string())
+        .unwrap_or_else(|_| uuid::Uuid::new_v4());
+    
+    let message = format!("A participant joined your bet: \"{}\"", bet_details.question);
+    let _ = p2p_notifications::notify_bet_creator(
+        &state,
+        bet_id,
+        P2PNotificationType::ParticipantJoined,
+        message,
+        Some(user_uuid),
+    )
+    .await;
+    
     Ok(StatusCode::OK)
 }
 
@@ -538,6 +564,33 @@ pub async fn report_outcome(
     // TODO: Call smart contract report_outcome function
     // TODO: Broadcast WebSocket update
     
+    // Notify other participants that outcome was reported
+    let bet_details = sqlx::query!(
+        "SELECT question FROM p2p_bets WHERE id = $1",
+        bet_id
+    )
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+    
+    let user_uuid = uuid::Uuid::parse_str(&user_id.to_string())
+        .unwrap_or_else(|_| uuid::Uuid::new_v4());
+    
+    let outcome_text = if req.outcome { "Yes" } else { "No" };
+    let message = format!(
+        "Outcome reported for bet \"{}\": {}. Please confirm or dispute.",
+        bet_details.question,
+        outcome_text
+    );
+    let _ = p2p_notifications::notify_bet_participants(
+        &state,
+        bet_id,
+        P2PNotificationType::OutcomeReported,
+        message,
+        Some(user_uuid),
+    )
+    .await;
+    
     Ok(StatusCode::OK)
 }
 
@@ -626,6 +679,30 @@ pub async fn confirm_outcome(
             .map_err(|e| AppError::DatabaseError(e.to_string()))?;
             
             // TODO: Call smart contract execute_payout
+            
+            // Notify all participants that outcome is verified
+            let bet_details = sqlx::query!(
+                "SELECT question FROM p2p_bets WHERE id = $1",
+                bet_id
+            )
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+            
+            let outcome_text = if verified_outcome { "Yes" } else { "No" };
+            let message = format!(
+                "Outcome verified for bet \"{}\": {}. Payout will be executed.",
+                bet_details.question,
+                outcome_text
+            );
+            let _ = p2p_notifications::notify_bet_participants(
+                &state,
+                bet_id,
+                P2PNotificationType::OutcomeVerified,
+                message,
+                None,
+            )
+            .await;
         } else {
             // Dispute
             sqlx::query!(
@@ -644,6 +721,28 @@ pub async fn confirm_outcome(
             .execute(&state.db)
             .await
             .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+            
+            // Notify all participants about dispute
+            let bet_details = sqlx::query!(
+                "SELECT question FROM p2p_bets WHERE id = $1",
+                bet_id
+            )
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+            
+            let message = format!(
+                "Bet disputed: \"{}\". Participants disagree on outcome. Manual resolution required.",
+                bet_details.question
+            );
+            let _ = p2p_notifications::notify_bet_participants(
+                &state,
+                bet_id,
+                P2PNotificationType::BetDisputed,
+                message,
+                None,
+            )
+            .await;
         }
     }
     

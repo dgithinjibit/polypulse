@@ -33,6 +33,7 @@ pub mod comments;       // Comments: list, create, like/unlike comments on polls
 pub mod health;         // Health check: simple endpoint to verify server is running
 pub mod markets;        // Markets: get prices and price history for prediction markets
 pub mod notifications;  // Notifications: list, mark read, get unread count
+pub mod p2p_bets;       // P2P Bets: create, join, report outcome, confirm outcome
 pub mod paymaster;      // Paymaster: gasless transaction relay for blockchain ops
 pub mod polls;          // Polls: create, list, resolve, suspend, cancel prediction markets
 pub mod users;          // Users: get current user profile and portfolio
@@ -319,6 +320,40 @@ pub fn build_router(state: AppState) -> Router {
 
         // GET /api/v1/users/me/portfolio - Get the current user's prediction portfolio
         .route("/api/v1/users/me/portfolio", get(users::get_portfolio))
+
+        // P2P Bets routes
+        // POST /api/v1/p2p-bets - Create a new P2P bet
+        .route("/api/v1/p2p-bets", post(p2p_bets::create_bet))
+
+        // GET /api/v1/p2p-bets - List P2P bets with filters
+        .route("/api/v1/p2p-bets", get(p2p_bets::list_bets))
+
+        // GET /api/v1/p2p-bets/:id - Get P2P bet details
+        .route("/api/v1/p2p-bets/:id", get(p2p_bets::get_bet))
+
+        // POST /api/v1/p2p-bets/:id/join - Join a P2P bet
+        .route("/api/v1/p2p-bets/:id/join", post(p2p_bets::join_bet))
+
+        // POST /api/v1/p2p-bets/:id/cancel - Cancel a P2P bet
+        .route("/api/v1/p2p-bets/:id/cancel", post(p2p_bets::cancel_bet))
+
+        // POST /api/v1/p2p-bets/:id/report-outcome - Report outcome for a P2P bet
+        .route("/api/v1/p2p-bets/:id/report-outcome", post(p2p_bets::report_outcome))
+
+        // POST /api/v1/p2p-bets/:id/confirm-outcome - Confirm outcome for a P2P bet
+        .route("/api/v1/p2p-bets/:id/confirm-outcome", post(p2p_bets::confirm_outcome))
+
+        // GET /api/v1/p2p-bets/:id/outcome-status - Get outcome status for a P2P bet
+        .route("/api/v1/p2p-bets/:id/outcome-status", get(p2p_bets::get_outcome_status))
+
+        // GET /api/v1/p2p-bets/share/:encrypted_id - Resolve shareable URL
+        .route("/api/v1/p2p-bets/share/:encrypted_id", get(p2p_bets::resolve_shareable_url))
+
+        // GET /api/v1/p2p-bets/my-positions - Get user's P2P bet positions
+        .route("/api/v1/p2p-bets/my-positions", get(p2p_bets::get_my_positions))
+
+        // GET /api/v1/p2p-bets/my-bets - Get user's created P2P bets
+        .route("/api/v1/p2p-bets/my-bets", get(p2p_bets::get_my_bets))
 
         // Apply JWT authentication middleware - validates Bearer token
         // This runs BEFORE rate limiting (innermost layer runs first)

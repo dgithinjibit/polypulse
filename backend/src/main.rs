@@ -116,6 +116,38 @@ async fn main() -> anyhow::Result<()> {
         services::poll_closer::poll_auto_closer(db_clone).await;
     });
 
+    // STEP 6.1: Spawn background task for notification cleanup (30-day retention)
+    let db_clone_notifications = state.db().clone();
+    tokio::spawn(async move {
+        loop {
+            // Run cleanup once per day
+            tokio::time::sleep(tokio::time::Duration::from_secs(86400)).await;
+            match services::p2p_notifications::cleanup_old_notifications(&db_clone_notifications).await {
+                Ok(count) => info!("Cleaned up {} old notifications", count),
+                Err(e) => tracing::error!("Failed to cleanup notifications: {}", e),
+            }
+        }
+    });
+
+    // STEP 6.2: Spawn background task for checking bets ending soon and ended bets
+    let state_clone_bets = state.clone();
+    tokio::spawn(async move {
+        loop {
+            // Check every 5 minutes
+            tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
+            
+            // Check for bets ending soon (1 hour before)
+            if let Err(e) = services::p2p_notifications::check_bets_ending_soon(&state_clone_bets).await {
+                tracing::error!("Failed to check bets ending soon: {}", e);
+            }
+            
+            // Check for ended bets
+            if let Err(e) = services::p2p_notifications::check_ended_bets(&state_clone_bets).await {
+                tracing::error!("Failed to check ended bets: {}", e);
+            }
+        }
+    });
+
     // STEP 7: Parse the server address
     // Bind to all network interfaces (0.0.0.0) on the configured port.
     // 0.0.0.0 means "accept connections on any network interface" (not just localhost).

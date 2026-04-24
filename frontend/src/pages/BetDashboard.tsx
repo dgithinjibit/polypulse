@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bet, BetState } from '../types/p2p-bet';
+import { Bet, BetState, BetUpdate } from '../types/p2p-bet';
 import { MarketCard } from '../components/MarketCard';
 import { PositionSidebar } from '../components/PositionSidebar';
 import { BetCreationForm } from '../components/BetCreationForm';
 import { useStellarWallet } from '../context/StellarWalletContext';
+import { useWebSocket } from '../context/WebSocketContext';
 
 type FilterOption = 'All' | 'Active' | 'Ending Soon' | 'Ended';
 type SortOption = 'Volume' | 'Liquidity' | 'Newest' | 'Ending Soon';
@@ -17,6 +18,7 @@ interface FilterPreferences {
 export default function BetDashboard() {
   const navigate = useNavigate();
   const { publicKey } = useStellarWallet();
+  const { subscribeToBet } = useWebSocket();
   
   const [bets, setBets] = useState<Bet[]>([]);
   const [filteredBets, setFilteredBets] = useState<Bet[]>([]);
@@ -49,6 +51,73 @@ export default function BetDashboard() {
   // Fetch bets from API
   useEffect(() => {
     fetchBets();
+  }, []);
+
+  // Subscribe to WebSocket updates for all displayed bets
+  // Requirement 8.2: Subscribe to bet updates for all displayed markets
+  useEffect(() => {
+    const unsubscribeFunctions: (() => void)[] = [];
+
+    // Subscribe to each bet
+    bets.forEach((bet) => {
+      const unsubscribe = subscribeToBet(bet.id, (update: BetUpdate) => {
+        handleBetUpdate(update);
+      });
+      unsubscribeFunctions.push(unsubscribe);
+    });
+
+    // Cleanup: unsubscribe from all bets when component unmounts or bets change
+    return () => {
+      unsubscribeFunctions.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [bets, subscribeToBet]);
+
+  const handleBetUpdate = useCallback((update: BetUpdate) => {
+    // Update the bet in the bets array
+    setBets((prevBets) =>
+      prevBets.map((bet) => {
+        if (bet.id !== update.betId) return bet;
+
+        // Apply update based on type
+        switch (update.type) {
+          case 'participant_joined':
+            // Add new participant to the bet
+            return {
+              ...bet,
+              participants: [...bet.participants, update.data.participant],
+              state: BetState.Active,
+            };
+          case 'outcome_reported':
+            // Add outcome report
+            return {
+              ...bet,
+              outcomeReports: [...bet.outcomeReports, update.data.report],
+            };
+          case 'outcome_verified':
+            // Mark outcome as verified
+            return {
+              ...bet,
+              state: BetState.Verified,
+              verifiedOutcome: update.data.outcome,
+            };
+          case 'disputed':
+            // Mark bet as disputed
+            return {
+              ...bet,
+              state: BetState.Disputed,
+              disputed: true,
+            };
+          case 'paid':
+            // Mark bet as paid
+            return {
+              ...bet,
+              state: BetState.Paid,
+            };
+          default:
+            return bet;
+        }
+      })
+    );
   }, []);
 
   const fetchBets = async () => {

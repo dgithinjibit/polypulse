@@ -3,7 +3,8 @@ import { Bet } from '../types/p2p-bet';
 import { useStellarWallet } from '../context/StellarWalletContext';
 import { handleError, handleSuccess } from '../lib/error-handler';
 import rustApiClient from '../config/api';
-import LoadingOverlay from './LoadingOverlay';
+import { TransactionModal } from './TransactionModal';
+import { useTransaction } from '../hooks/useTransaction';
 
 interface OutcomeReportingModalProps {
   betId: string;
@@ -19,14 +20,48 @@ export function OutcomeReportingModal({
   onClose,
 }: OutcomeReportingModalProps) {
   const { publicKey } = useStellarWallet();
+  const transaction = useTransaction({
+    onSuccess: (txHash) => {
+      // Transaction confirmed, now record in backend
+      recordOutcomeInBackend(txHash);
+    },
+    showToasts: true,
+  });
+  
   const [selectedOutcome, setSelectedOutcome] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('');
   const [error, setError] = useState<string>('');
 
   const userParticipant = bet.participants.find((p) => p.address === userAddress);
   const hasReported = userParticipant?.hasReported || false;
   const isFirstReporter = bet.outcomeReports.length === 0;
+
+  const recordOutcomeInBackend = async (txHash: string) => {
+    if (selectedOutcome === null) return;
+
+    try {
+      const endpoint = isFirstReporter ? 'report-outcome' : 'confirm-outcome';
+      
+      // Call backend API to record outcome
+      await rustApiClient.post(`/api/v1/p2p-bets/${betId}/${endpoint}`, {
+        outcome: selectedOutcome,
+        transaction_hash: txHash,
+      });
+
+      handleSuccess(
+        isFirstReporter ? 'Outcome Reported' : 'Outcome Confirmed',
+        isFirstReporter 
+          ? 'Your outcome report has been recorded on-chain.'
+          : 'Your outcome confirmation has been recorded on-chain.'
+      );
+
+      onClose();
+    } catch (err: any) {
+      console.error('Error recording outcome:', err);
+      handleError(err, {
+        title: 'Failed to Record Outcome',
+      });
+    }
+  };
 
   const handleSubmit = async () => {
     if (selectedOutcome === null) {
@@ -41,96 +76,76 @@ export function OutcomeReportingModal({
       return;
     }
 
-    setLoading(true);
-    setLoadingMessage('Preparing transaction...');
     setError('');
 
     try {
-      const endpoint = isFirstReporter ? 'report-outcome' : 'confirm-outcome';
       const contractFunction = isFirstReporter ? 'report_outcome' : 'confirm_outcome';
-      
-      setLoadingMessage('Waiting for wallet signature...');
 
-      // Call smart contract function via Freighter
-      const contractId = import.meta.env.VITE_STELLAR_P2P_BET_CONTRACT_ID;
-      
-      if (!contractId) {
-        throw new Error('P2P Bet contract ID not configured');
-      }
+      // Execute transaction
+      await transaction.execute(async () => {
+        const contractId = import.meta.env.VITE_STELLAR_P2P_BET_CONTRACT_ID;
+        
+        if (!contractId) {
+          throw new Error('P2P Bet contract ID not configured');
+        }
 
-      // Build the contract call transaction
-      const StellarSdk = await import('@stellar/stellar-sdk');
-      const server = new StellarSdk.Horizon.Server(
-        import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
-          ? 'https://horizon.stellar.org'
-          : 'https://horizon-testnet.stellar.org'
-      );
+        // Build the contract call transaction
+        const StellarSdk = await import('@stellar/stellar-sdk');
+        const server = new StellarSdk.Horizon.Server(
+          import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
+            ? 'https://horizon.stellar.org'
+            : 'https://horizon-testnet.stellar.org'
+        );
 
-      const account = await server.loadAccount(publicKey);
-      const contract = new StellarSdk.Contract(contractId);
+        const account = await server.loadAccount(publicKey);
+        const contract = new StellarSdk.Contract(contractId);
 
-      // Build report_outcome or confirm_outcome operation
-      const transaction = new StellarSdk.TransactionBuilder(account, {
-        fee: StellarSdk.BASE_FEE,
-        networkPassphrase: import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
-          ? StellarSdk.Networks.PUBLIC
-          : StellarSdk.Networks.TESTNET,
-      })
-        .addOperation(
-          contract.call(
-            contractFunction,
-            StellarSdk.Address.fromString(publicKey).toScVal(),
-            StellarSdk.nativeToScVal(parseInt(betId), { type: 'u64' }),
-            StellarSdk.nativeToScVal(selectedOutcome, { type: 'bool' })
+        // Build report_outcome or confirm_outcome operation
+        const txn = new StellarSdk.TransactionBuilder(account, {
+          fee: StellarSdk.BASE_FEE,
+          networkPassphrase: import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
+            ? StellarSdk.Networks.PUBLIC
+            : StellarSdk.Networks.TESTNET,
+        })
+          .addOperation(
+            contract.call(
+              contractFunction,
+              StellarSdk.Address.fromString(publicKey).toScVal(),
+              StellarSdk.nativeToScVal(parseInt(betId), { type: 'u64' }),
+              StellarSdk.nativeToScVal(selectedOutcome, { type: 'bool' })
+            )
           )
-        )
-        .setTimeout(180)
-        .build();
+          .setTimeout(180)
+          .build();
 
-      // Sign transaction with Freighter
-      const { signTransaction } = await import('@stellar/freighter-api');
-      const { signedTxXdr, error: signError } = await signTransaction(transaction.toXDR(), {
-        networkPassphrase: import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
-          ? StellarSdk.Networks.PUBLIC
-          : StellarSdk.Networks.TESTNET,
+        // Sign transaction with Freighter
+        const { signTransaction } = await import('@stellar/freighter-api');
+        const { signedTxXdr, error: signError } = await signTransaction(txn.toXDR(), {
+          networkPassphrase: import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
+            ? StellarSdk.Networks.PUBLIC
+            : StellarSdk.Networks.TESTNET,
+        });
+
+        if (signError) {
+          throw new Error(`Transaction signing failed: ${signError}`);
+        }
+
+        // Submit transaction to Stellar
+        const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(
+          signedTxXdr,
+          import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
+            ? StellarSdk.Networks.PUBLIC
+            : StellarSdk.Networks.TESTNET
+        );
+
+        const result = await server.submitTransaction(signedTransaction as any);
+
+        if (!result.successful) {
+          throw new Error('Transaction failed on Stellar network');
+        }
+
+        return { hash: result.hash };
       });
-
-      if (signError) {
-        throw new Error(`Transaction signing failed: ${signError}`);
-      }
-
-      setLoadingMessage('Confirming on Stellar network...');
-
-      // Submit transaction to Stellar
-      const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(
-        signedTxXdr,
-        import.meta.env.VITE_STELLAR_NETWORK === 'mainnet'
-          ? StellarSdk.Networks.PUBLIC
-          : StellarSdk.Networks.TESTNET
-      );
-
-      const result = await server.submitTransaction(signedTransaction as any);
-
-      if (!result.successful) {
-        throw new Error('Transaction failed on Stellar network');
-      }
-
-      setLoadingMessage('Recording outcome...');
-
-      // Call backend API to record outcome
-      await rustApiClient.post(`/api/v1/p2p-bets/${betId}/${endpoint}`, {
-        outcome: selectedOutcome,
-        transaction_hash: result.hash,
-      });
-
-      handleSuccess(
-        isFirstReporter ? 'Outcome Reported' : 'Outcome Confirmed',
-        isFirstReporter 
-          ? 'Your outcome report has been recorded on-chain.'
-          : 'Your outcome confirmation has been recorded on-chain.'
-      );
-
-      onClose();
     } catch (err: any) {
       console.error('Error submitting outcome:', err);
       handleError(err, {
@@ -138,16 +153,22 @@ export function OutcomeReportingModal({
         onRetry: handleSubmit,
       });
       setError('Failed to submit outcome. Please try again.');
-    } finally {
-      setLoading(false);
-      setLoadingMessage('');
     }
   };
 
   if (hasReported) {
     return (
       <>
-        {loading && <LoadingOverlay message={loadingMessage} />}
+        {/* Transaction Modal */}
+        <TransactionModal
+          isOpen={transaction.isModalOpen}
+          status={transaction.status}
+          txHash={transaction.txHash}
+          error={transaction.error?.message}
+          onClose={transaction.closeModal}
+          onRetry={transaction.retry}
+        />
+        
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
             <h2 className="text-xl font-bold mb-4">Outcome Status</h2>
@@ -182,7 +203,16 @@ export function OutcomeReportingModal({
 
   return (
     <>
-      {loading && <LoadingOverlay message={loadingMessage} />}
+      {/* Transaction Modal */}
+      <TransactionModal
+        isOpen={transaction.isModalOpen}
+        status={transaction.status}
+        txHash={transaction.txHash}
+        error={transaction.error?.message}
+        onClose={transaction.closeModal}
+        onRetry={transaction.retry}
+      />
+      
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg p-6 max-w-md w-full">
           <h2 className="text-xl font-bold mb-4">
@@ -227,14 +257,14 @@ export function OutcomeReportingModal({
           <div className="flex gap-4">
             <button
               onClick={handleSubmit}
-              disabled={loading || selectedOutcome === null}
+              disabled={transaction.status === 'pending' || transaction.status === 'confirming' || selectedOutcome === null}
               className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              {loading ? 'Submitting...' : 'Submit'}
+              {transaction.status === 'pending' || transaction.status === 'confirming' ? 'Submitting...' : 'Submit'}
             </button>
             <button
               onClick={onClose}
-              disabled={loading}
+              disabled={transaction.status === 'pending' || transaction.status === 'confirming'}
               className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 disabled:bg-gray-300 disabled:cursor-not-allowed"
             >
               Cancel
