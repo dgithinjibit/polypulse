@@ -255,17 +255,25 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
       handleSuccess('Wallet Connected', `Connected to ${stellar.formatAddress(address)}`)
 
       // STEP 6: Navigate to the markets dashboard
-      navigate('/markets')
+      // Use setTimeout to ensure state is fully updated before navigation
+      setTimeout(() => {
+        navigate('/markets')
+      }, 100)
     } catch (error: any) {
       // Connection failed at some step - clear the public key
       console.error('Wallet connection failed:', error)
       setPublicKey(null)
+      
+      // Clear any partial auth state
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      localStorage.removeItem('wallet_address')
+      
       // Show error toast with retry option
       handleError(error, {
         onRetry: () => connectWallet(),
       })
-      // Re-throw so callers (e.g., Login page) can handle it too
-      throw error
+      // Don't re-throw - let the user stay on the login page
     } finally {
       // Always clear loading state
       setIsLoading(false)

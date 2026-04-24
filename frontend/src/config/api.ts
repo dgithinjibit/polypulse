@@ -140,11 +140,20 @@ rustApiClient.interceptors.response.use(
     // Check if we have a refresh token to use
     const refreshToken = localStorage.getItem('refresh_token')
     if (!refreshToken) {
-      // No refresh token available - can't refresh, must re-login
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
-      localStorage.removeItem('wallet_address')
-      window.location.href = '/login'
+      // No refresh token available - can't refresh
+      // Only redirect if we're not already on the login page
+      if (window.location.pathname !== '/login') {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        localStorage.removeItem('wallet_address')
+        
+        // Use navigate instead of hard redirect to preserve React state
+        // Only redirect if this is an auth endpoint failure
+        const isAuthEndpoint = originalRequest.url?.includes('/auth/')
+        if (isAuthEndpoint) {
+          window.location.href = '/login'
+        }
+      }
       return Promise.reject(error)
     } // end no refresh token check
 
@@ -206,8 +215,11 @@ rustApiClient.interceptors.response.use(
       localStorage.removeItem('refresh_token')
       localStorage.removeItem('wallet_address')
 
-      // Redirect to login
-      window.location.href = '/login'
+      // Only redirect if not already on login page
+      if (window.location.pathname !== '/login') {
+        // Use a softer redirect - let React Router handle it
+        window.location.href = '/login'
+      }
 
       return Promise.reject(refreshError)
     } finally {
