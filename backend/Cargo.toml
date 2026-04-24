@@ -73,6 +73,7 @@ ring = "0.17"
 sha2 = "0.10"
 hex = "0.4"
 base64 = "0.21"
+aes-gcm = "0.10"
 
 # ed25519 signature verification (Stellar wallet auth)
 ed25519-dalek = { version = "2", features = ["serde"] }

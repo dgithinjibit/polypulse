@@ -2,6 +2,14 @@
 
 A Web3 prediction markets platform where users trade on real-world outcomes using Stellar wallets. Built for the Stellar hackathon, live at [polypulse.co.ke](https://polypulse.co.ke).
 
+## 🚀 New Features (v2.0)
+
+- **Multi-Participant Betting Pools**: Unlimited participants per bet with proportional payouts
+- **Activity Feed**: Real-time activity tracking and trending bets
+- **Bet Templates**: Quick bet creation with pre-filled templates (Crypto, Sports, Weather)
+- **Reputation System**: User trust scores (0-100) with badges and verified status
+- **Gamification**: XP system, levels (Bronze/Silver/Gold/Diamond), achievements, leaderboards
+
 ---
 
 ## Tech Stack
@@ -27,6 +35,11 @@ polypulse/
 │   ├── src/
 │   │   ├── routes/                 # HTTP route handlers (auth, polls, bets, wagers, wallet…)
 │   │   ├── services/               # Business logic (cache, wallet, paymaster, poll_closer…)
+│   │   │   ├── activity_feed.rs    # Activity tracking and trending bets
+│   │   │   ├── bet_templates.rs    # Bet template system
+│   │   │   ├── leaderboard.rs      # XP, levels, and leaderboards
+│   │   │   ├── reputation.rs       # User reputation scoring
+│   │   │   └── telegram_bot.rs     # Telegram bot integration
 │   │   ├── middleware/             # Auth, rate limiting, request ID, validation
 │   │   ├── models.rs               # Database model structs
 │   │   ├── lmsr.rs                 # LMSR pricing algorithm
@@ -34,26 +47,34 @@ polypulse/
 │   │   ├── state.rs                # Shared AppState (DB pool, Redis, config)
 │   │   └── ws/                     # WebSocket hub for real-time updates
 │   ├── migrations/                 # SQL migration files (sqlx)
+│   ├── tests/                      # Integration and property-based tests
 │   └── Cargo.toml
 ├── contracts/                      # Stellar Soroban smart contracts
 │   └── contracts/
 │       ├── market/                 # LMSR prediction market contract
-│       └── challenge/              # 1v1 wager contract
+│       ├── challenge/              # 1v1 wager contract
+│       └── multi-pool/             # Multi-participant betting pool contract
 ├── frontend/                       # React + TypeScript SPA
 │   ├── src/
 │   │   ├── components/             # Navbar, Footer, WalletModal, ProtectedRoute…
+│   │   │   └── Leaderboard.tsx     # Leaderboard component
 │   │   ├── context/                # AuthContext, StellarWalletContext
 │   │   ├── pages/                  # Markets, Challenges, Wagers, Portfolio, Wallet…
 │   │   ├── hooks/                  # useWagers, useChat, use-toast
 │   │   ├── services/               # Axios API client
+│   │   │   └── pwa.ts              # PWA service worker integration
 │   │   ├── lib/                    # stellar-helper, stellar-sdk-loader, utils
 │   │   ├── config/                 # API config
 │   │   └── types/                  # Shared TypeScript types
+│   ├── public/
+│   │   ├── sw.js                   # Service worker for PWA
+│   │   └── manifest.json           # PWA manifest
 │   ├── e2e/                        # Playwright end-to-end tests
 │   └── package.json
 ├── docker-compose.yml
 ├── Dockerfile
 ├── .env.example
+├── ENHANCEMENT_IMPLEMENTATION_STATUS.md  # Feature implementation tracking
 └── README.md
 ```
 
@@ -81,7 +102,7 @@ cp .env.example .env
 ```bash
 cd backend
 
-# Run DB migrations
+# Run DB migrations (includes new enhancement tables)
 sqlx migrate run
 
 # Start dev server (listens on :8000)
@@ -216,6 +237,25 @@ All endpoints are prefixed with `/api/v1`. WebSocket connects at `/ws?token=<jwt
 | `GET` | `/users/me/portfolio` | Yes | User portfolio |
 | `POST` | `/paymaster/relay` | Yes | Relay gasless transaction |
 
+### Enhancements (v2.0)
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/activities` | No | Get recent activities |
+| `GET` | `/activities/trending` | No | Get trending bets |
+| `GET` | `/activities/user/:id` | Yes | Get user activity history |
+| `GET` | `/templates` | No | Get all bet templates |
+| `GET` | `/templates/:category` | No | Get templates by category |
+| `POST` | `/templates/:id/use` | Yes | Increment template usage |
+| `GET` | `/reputation/:user_id` | No | Get user reputation |
+| `GET` | `/reputation/:user_id/history` | Yes | Get reputation history |
+| `GET` | `/leaderboard/:category` | No | Get leaderboard (top_earners, best_predictors, most_active) |
+| `GET` | `/multi-pools` | No | List multi-participant pools |
+| `GET` | `/multi-pools/:id` | No | Get pool details |
+| `POST` | `/multi-pools` | Yes | Create multi-participant pool |
+| `POST` | `/multi-pools/:id/join` | Yes | Join pool with position and stake |
+| `GET` | `/multi-pools/:id/odds` | No | Get current odds |
+
 ---
 
 ## Authentication Flow
@@ -279,6 +319,22 @@ stellar contract deploy \
   --network testnet
 ```
 
+### Multi-Pool Contract (`contracts/contracts/multi-pool/`) **NEW**
+
+Multi-participant betting pool with proportional payouts.
+
+- Unlimited participants per pool
+- Separate Yes/No position tracking
+- Proportional payout calculation (7% platform fee)
+- Real-time odds calculation
+- Property-based tested for mathematical correctness
+
+```bash
+stellar contract deploy \
+  --wasm target/wasm32-unknown-unknown/release/multi_pool.wasm \
+  --network testnet
+```
+
 ---
 
 ## Testing
@@ -287,14 +343,16 @@ stellar contract deploy \
 
 ```bash
 cd backend
-cargo test
+cargo test                              # All tests
+cargo test --test multi_pool_payout_tests  # Property-based payout tests
 ```
 
 ### Contracts
 
 ```bash
 cd contracts
-cargo test
+cargo test                              # All contract tests
+cd contracts/multi-pool && cargo test  # Multi-pool specific tests
 ```
 
 ### Frontend (unit)

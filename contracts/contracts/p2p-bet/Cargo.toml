@@ -1,14 +1,17 @@
-[workspace]
-members = [
-    "contracts/market",
-    "contracts/challenge",
-    "contracts/multi-pool",
-]
-resolver = "2"
+[package]
+name = "p2p-bet"
+version = "0.1.0"
+edition = "2021"
 
-[workspace.dependencies]
-soroban-sdk = "20.5.0"
-proptest = "1.2"
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = "21.7.0"
+
+[dev-dependencies]
+soroban-sdk = { version = "21.7.0", features = ["testutils"] }
+proptest = "1.4"
 
 [profile.release]
 opt-level = "z"

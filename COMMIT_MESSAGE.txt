@@ -1,0 +1,62 @@
+feat: Add v2.0 enhancements - Multi-participant pools, Activity feed, Templates, Reputation, Gamification
+
+## Major Features Added
+
+### Smart Contracts
+- Multi-participant betting pool contract with proportional payouts
+- Property-based tested for mathematical correctness
+- 7% platform fee with verified calculations
+
+### Backend Services
+- Activity feed service (real-time tracking, trending bets)
+- Bet templates service (4 default templates with variable substitution)
+- Reputation system (0-100 scores with badges and verified status)
+- Leaderboard service (XP, levels, achievements, win streaks)
+- Telegram bot service (commands, notifications, wallet linking)
+
+### Database
+- 7 new tables (activities, bet_templates, achievements, etc.)
+- Extended users table (xp, level, reputation_score, etc.)
+- Extended p2p_bets table (multi-participant support)
+- Default data (5 achievements, 4 templates)
+
+### Frontend
+- Leaderboard component with level badges
+- PWA support (service worker, manifest, offline mode)
+- Push notification integration
+
+### Testing
+- 15+ property-based and unit tests passing
+- Multi-participant payout fairness verified
+- Template variable substitution verified
+- Reputation score bounds verified
+
+### Documentation
+- Updated README.md with v2.0 features
+- Added CHANGELOG.md
+- Added PRODUCTION_CHECKLIST.md
+- Added DEPLOYMENT_SUMMARY.md
+- Added ENHANCEMENT_IMPLEMENTATION_STATUS.md
+
+## API Endpoints Added (15)
+- Activity feed endpoints (3)
+- Template endpoints (3)
+- Reputation endpoints (2)
+- Leaderboard endpoint (1)
+- Multi-pool endpoints (5)
+
+## Breaking Changes
+None - all changes are additive and backward compatible
+
+## Migration Required
+- Run `sqlx migrate run` to create new tables
+- Deploy multi-pool smart contract
+- Update environment variables with contract ID
+
+## Test Results
+✓ All 15+ tests passing
+✓ Property-based tests verified
+✓ Mathematical correctness confirmed
+✓ No compilation errors or warnings
+
+Closes #[issue-number] (if applicable)

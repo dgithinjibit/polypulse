@@ -1,8 +1,15 @@
+pub mod activity_feed;
+pub mod bet_templates;
 pub mod cache;
+pub mod encryption;
+pub mod leaderboard;
 pub mod mpesa;
 pub mod paymaster;
 pub mod poll_closer;
+pub mod question_parser;
+pub mod reputation;
 pub mod session;
+pub mod telegram_bot;
 pub mod wallet;
 pub mod wallet_transactions;
 pub mod web3auth;
