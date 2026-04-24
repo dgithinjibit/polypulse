@@ -12,7 +12,7 @@ export class EncryptionService {
     // Derive key from secret
     const keyMaterial = await crypto.subtle.importKey(
       'raw',
-      encoder.encode(secret),
+      encoder.encode(secret) as Uint8Array,
       'PBKDF2',
       false,
       ['deriveBits', 'deriveKey']
@@ -21,7 +21,7 @@ export class EncryptionService {
     const key = await crypto.subtle.deriveKey(
       {
         name: 'PBKDF2',
-        salt: encoder.encode('polypulse-salt'),
+        salt: encoder.encode('polypulse-salt') as Uint8Array,
         iterations: 100000,
         hash: 'SHA-256',
       },
@@ -36,9 +36,9 @@ export class EncryptionService {
 
     // Encrypt
     const encrypted = await crypto.subtle.encrypt(
-      { name: this.ALGORITHM, iv },
+      { name: this.ALGORITHM, iv: iv as Uint8Array },
       key,
-      data
+      data as Uint8Array
     );
 
     // Combine IV + ciphertext
@@ -67,7 +67,7 @@ export class EncryptionService {
     // Derive key from secret
     const keyMaterial = await crypto.subtle.importKey(
       'raw',
-      encoder.encode(secret),
+      encoder.encode(secret) as Uint8Array,
       'PBKDF2',
       false,
       ['deriveBits', 'deriveKey']
@@ -76,7 +76,7 @@ export class EncryptionService {
     const key = await crypto.subtle.deriveKey(
       {
         name: 'PBKDF2',
-        salt: encoder.encode('polypulse-salt'),
+        salt: encoder.encode('polypulse-salt') as Uint8Array,
         iterations: 100000,
         hash: 'SHA-256',
       },
@@ -88,9 +88,9 @@ export class EncryptionService {
 
     // Decrypt
     const decrypted = await crypto.subtle.decrypt(
-      { name: this.ALGORITHM, iv },
+      { name: this.ALGORITHM, iv: iv as Uint8Array },
       key,
-      ciphertext
+      ciphertext as Uint8Array
     );
 
     return decoder.decode(decrypted);

@@ -176,6 +176,23 @@ Every time you push to GitHub:
 
 ## Troubleshooting
 
+### TypeScript Build Errors (ArrayBuffer/ArrayBufferLike)
+**Error Message**:
+```
+Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'
+Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'
+```
+
+**What it means**: TypeScript's strict type checking in the build environment detects incompatibility between `ArrayBufferLike` (used by some libraries) and `ArrayBuffer` (expected by Web Crypto API).
+
+**Already Fixed**: This has been resolved in the codebase with:
+- Type assertions in `frontend/src/services/encryption.ts`
+- Type assertions in `frontend/src/services/pwa.ts`
+- Type declarations in `frontend/src/types/buffer.d.ts`
+- Updated `tsconfig.json` with `skipDefaultLibCheck: true`
+
+**If you still see this error**: Make sure you're deploying from the latest commit that includes these fixes.
+
 ### Build Fails
 **Check**:
 - Build logs in 4everland dashboard
