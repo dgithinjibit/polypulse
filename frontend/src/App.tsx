@@ -61,6 +61,7 @@ import SocialLogin from './pages/SocialLogin'     // Post-connect onboarding - /
 import Help from './pages/Help'                   // Help/FAQ page - /help
 import Terms from './pages/Terms'                 // Terms page - /terms
 import Privacy from './pages/Privacy'             // Privacy page - /privacy
+import BetDashboard from './pages/BetDashboard'   // P2P Betting Dashboard - /bets
 
 // ============================================================
 // COMPONENT: App
@@ -113,6 +114,9 @@ export default function App() {
 
                 {/* Single market detail page - :id is the market ID */}
                 <Route path="/markets/:id" element={<MarketDetail />} />
+
+                {/* P2P Betting Dashboard */}
+                <Route path="/bets" element={<BetDashboard />} />
 
                 {/* Top traders leaderboard */}
                 <Route path="/leaderboard" element={<Leaderboard />} />

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Position } from '../types/p2p-bet';
 
 export function PositionSidebar() {
+  const navigate = useNavigate();
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -73,7 +75,7 @@ export function PositionSidebar() {
               <div
                 key={position.betId}
                 className="p-3 border border-gray-200 rounded-md hover:bg-gray-50 cursor-pointer transition-colors"
-                onClick={() => (window.location.href = `/bet/${position.betId}`)}
+                onClick={() => navigate(`/bet/${position.betId}`)}
               >
                 <p className="text-sm font-medium mb-1">
                   {truncateQuestion(position.question)}

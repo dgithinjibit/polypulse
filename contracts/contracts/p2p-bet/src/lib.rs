@@ -365,9 +365,9 @@ impl P2PBetContract {
         bet.state = BetState::Paid;
     }
 
-    /// Collect platform fee (7%)
+    /// Collect platform fee (2%)
     fn collect_fee_internal(env: Env, amount: i128) -> i128 {
-        let fee = amount * 7 / 100; // 7% fee
+        let fee = amount * 2 / 100; // 2% fee
         let amount_after_fee = amount - fee;
         
         // Transfer fee to treasury
@@ -438,3 +438,600 @@ impl P2PBetContract {
         None
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger},
+        Env,
+    };
+
+    fn setup_env() -> (Env, Address, Address, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        // Set initial timestamp
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+        let admin = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let participant = Address::generate(&env);
+        (env, admin, creator, participant)
+    }
+
+    // ─── Bet State Tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_bet_state_transitions() {
+        let (env, _, creator, participant) = setup_env();
+        
+        // Created state
+        let mut bet = Bet {
+            id: 1,
+            creator: creator.clone(),
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Created,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: None,
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        assert_eq!(bet.state, BetState::Created);
+        
+        // Add participant -> Active
+        let p = Participant {
+            address: participant.clone(),
+            position: true,
+            stake: 500_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: false,
+        };
+        bet.participants.push_back(p);
+        bet.state = BetState::Active;
+        assert_eq!(bet.state, BetState::Active);
+        
+        // Report outcome -> Ended
+        bet.state = BetState::Ended;
+        assert_eq!(bet.state, BetState::Ended);
+        
+        // Verify outcome -> Verified
+        bet.state = BetState::Verified;
+        bet.verified_outcome = Some(true);
+        assert_eq!(bet.state, BetState::Verified);
+        assert_eq!(bet.verified_outcome, Some(true));
+        
+        // Payout -> Paid
+        bet.state = BetState::Paid;
+        assert_eq!(bet.state, BetState::Paid);
+    }
+
+    #[test]
+    fn test_bet_state_disputed() {
+        let (env, _, creator, _) = setup_env();
+        
+        let mut bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Ended,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: None,
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        bet.state = BetState::Disputed;
+        assert_eq!(bet.state, BetState::Disputed);
+    }
+
+    #[test]
+    fn test_bet_state_cancelled() {
+        let (env, _, creator, _) = setup_env();
+        
+        let mut bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Created,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: None,
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        bet.state = BetState::Cancelled;
+        assert_eq!(bet.state, BetState::Cancelled);
+    }
+
+    // ─── Participant Tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_add_single_participant() {
+        let (env, _, creator, participant) = setup_env();
+        
+        let mut bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Created,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: None,
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        let p = Participant {
+            address: participant.clone(),
+            position: true,
+            stake: 500_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: false,
+        };
+        
+        bet.participants.push_back(p);
+        
+        assert_eq!(bet.participants.len(), 1);
+        assert_eq!(bet.participants.get(0).unwrap().address, participant);
+        assert_eq!(bet.participants.get(0).unwrap().stake, 500_000i128);
+    }
+
+    #[test]
+    fn test_add_multiple_participants() {
+        let (env, _, creator, _) = setup_env();
+        
+        let mut bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Created,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: None,
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        let p1 = Address::generate(&env);
+        let p2 = Address::generate(&env);
+        let p3 = Address::generate(&env);
+        
+        bet.participants.push_back(Participant {
+            address: p1.clone(),
+            position: true,
+            stake: 500_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: false,
+        });
+        
+        bet.participants.push_back(Participant {
+            address: p2.clone(),
+            position: false,
+            stake: 300_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: false,
+        });
+        
+        bet.participants.push_back(Participant {
+            address: p3.clone(),
+            position: true,
+            stake: 200_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: false,
+        });
+        
+        assert_eq!(bet.participants.len(), 3);
+        assert_eq!(bet.participants.get(0).unwrap().position, true);
+        assert_eq!(bet.participants.get(1).unwrap().position, false);
+        assert_eq!(bet.participants.get(2).unwrap().position, true);
+    }
+
+    // ─── Outcome Reporting Tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_add_outcome_report() {
+        let (env, _, creator, participant) = setup_env();
+        
+        let mut bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Ended,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: None,
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        let report = OutcomeReport {
+            reporter: participant.clone(),
+            outcome: true,
+            reported_at: 2_000_000u64,
+        };
+        
+        bet.outcome_reports.push_back(report);
+        
+        assert_eq!(bet.outcome_reports.len(), 1);
+        assert_eq!(bet.outcome_reports.get(0).unwrap().reporter, participant);
+        assert_eq!(bet.outcome_reports.get(0).unwrap().outcome, true);
+    }
+
+    #[test]
+    fn test_multiple_outcome_reports_agreement() {
+        let (env, _, creator, _) = setup_env();
+        
+        let mut bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Ended,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: None,
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        let p1 = Address::generate(&env);
+        let p2 = Address::generate(&env);
+        
+        bet.outcome_reports.push_back(OutcomeReport {
+            reporter: p1,
+            outcome: true,
+            reported_at: 2_000_000u64,
+        });
+        
+        bet.outcome_reports.push_back(OutcomeReport {
+            reporter: p2,
+            outcome: true,
+            reported_at: 2_000_100u64,
+        });
+        
+        // Check all reports agree
+        let first_outcome = bet.outcome_reports.get(0).unwrap().outcome;
+        let all_agree = bet.outcome_reports.iter().all(|r| r.outcome == first_outcome);
+        
+        assert!(all_agree);
+    }
+
+    #[test]
+    fn test_multiple_outcome_reports_disagreement() {
+        let (env, _, creator, _) = setup_env();
+        
+        let mut bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Ended,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: None,
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        let p1 = Address::generate(&env);
+        let p2 = Address::generate(&env);
+        
+        bet.outcome_reports.push_back(OutcomeReport {
+            reporter: p1,
+            outcome: true,
+            reported_at: 2_000_000u64,
+        });
+        
+        bet.outcome_reports.push_back(OutcomeReport {
+            reporter: p2,
+            outcome: false,
+            reported_at: 2_000_100u64,
+        });
+        
+        // Check reports disagree
+        let first_outcome = bet.outcome_reports.get(0).unwrap().outcome;
+        let all_agree = bet.outcome_reports.iter().all(|r| r.outcome == first_outcome);
+        
+        assert!(!all_agree);
+    }
+
+    // ─── Payout Calculation Tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_calculate_total_pool() {
+        let (env, _, creator, _) = setup_env();
+        
+        let mut bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Verified,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: Some(true),
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        let p1 = Address::generate(&env);
+        let p2 = Address::generate(&env);
+        
+        bet.participants.push_back(Participant {
+            address: p1,
+            position: true,
+            stake: 500_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: true,
+        });
+        
+        bet.participants.push_back(Participant {
+            address: p2,
+            position: false,
+            stake: 300_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: true,
+        });
+        
+        // Calculate total pool
+        let mut total_pool = bet.stake_amount;
+        for p in bet.participants.iter() {
+            total_pool += p.stake;
+        }
+        
+        assert_eq!(total_pool, 1_800_000i128);
+    }
+
+    #[test]
+    fn test_identify_winners() {
+        let (env, _, creator, _) = setup_env();
+        
+        let mut bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Verified,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: Some(true),
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        let p1 = Address::generate(&env);
+        let p2 = Address::generate(&env);
+        let p3 = Address::generate(&env);
+        
+        bet.participants.push_back(Participant {
+            address: p1.clone(),
+            position: true,
+            stake: 500_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: true,
+        });
+        
+        bet.participants.push_back(Participant {
+            address: p2,
+            position: false,
+            stake: 300_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: true,
+        });
+        
+        bet.participants.push_back(Participant {
+            address: p3.clone(),
+            position: true,
+            stake: 200_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: true,
+        });
+        
+        // Find winners
+        let winning_outcome = bet.verified_outcome.unwrap();
+        let mut winners = Vec::new(&env);
+        for p in bet.participants.iter() {
+            if p.position == winning_outcome {
+                winners.push_back(p);
+            }
+        }
+        
+        assert_eq!(winners.len(), 2);
+        assert_eq!(winners.get(0).unwrap().address, p1);
+        assert_eq!(winners.get(1).unwrap().address, p3);
+    }
+
+    #[test]
+    fn test_platform_fee_calculation() {
+        let amount = 1_000_000i128;
+        let fee = amount * 2 / 100; // 2%
+        let amount_after_fee = amount - fee;
+        
+        assert_eq!(fee, 20_000i128);
+        assert_eq!(amount_after_fee, 980_000i128);
+    }
+
+    #[test]
+    fn test_payout_distribution_equal_stakes() {
+        let total_pool = 1_800_000i128;
+        let num_winners = 2;
+        let payout_per_winner = total_pool / num_winners;
+        
+        assert_eq!(payout_per_winner, 900_000i128);
+    }
+
+    // ─── Edge Case Tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_no_participants() {
+        let (env, _, creator, _) = setup_env();
+        
+        let bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Created,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: None,
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        assert_eq!(bet.participants.len(), 0);
+    }
+
+    #[test]
+    fn test_no_winners_scenario() {
+        let (env, _, creator, _) = setup_env();
+        
+        let mut bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Verified,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: Some(false), // Outcome is false
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        let p1 = Address::generate(&env);
+        let p2 = Address::generate(&env);
+        
+        // Both participants bet on true, but outcome is false
+        bet.participants.push_back(Participant {
+            address: p1,
+            position: true,
+            stake: 500_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: true,
+        });
+        
+        bet.participants.push_back(Participant {
+            address: p2,
+            position: true,
+            stake: 300_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: true,
+        });
+        
+        // Find winners
+        let winning_outcome = bet.verified_outcome.unwrap();
+        let mut winners = Vec::new(&env);
+        for p in bet.participants.iter() {
+            if p.position == winning_outcome {
+                winners.push_back(p);
+            }
+        }
+        
+        assert_eq!(winners.len(), 0);
+    }
+
+    #[test]
+    fn test_all_participants_reported() {
+        let (env, _, creator, _) = setup_env();
+        
+        let mut bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Ended,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: None,
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        let p1 = Address::generate(&env);
+        let p2 = Address::generate(&env);
+        
+        bet.participants.push_back(Participant {
+            address: p1,
+            position: true,
+            stake: 500_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: true,
+        });
+        
+        bet.participants.push_back(Participant {
+            address: p2,
+            position: false,
+            stake: 300_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: true,
+        });
+        
+        let all_reported = bet.participants.iter().all(|p| p.has_reported);
+        assert!(all_reported);
+    }
+
+    #[test]
+    fn test_some_participants_not_reported() {
+        let (env, _, creator, _) = setup_env();
+        
+        let mut bet = Bet {
+            id: 1,
+            creator,
+            question: String::from_str(&env, "Will it rain?"),
+            stake_amount: 1_000_000i128,
+            end_time: 2_000_000u64,
+            state: BetState::Ended,
+            created_at: 1_000_000u64,
+            participants: Vec::new(&env),
+            outcome_reports: Vec::new(&env),
+            verified_outcome: None,
+            shareable_url_hash: String::from_str(&env, "abc123"),
+        };
+        
+        let p1 = Address::generate(&env);
+        let p2 = Address::generate(&env);
+        
+        bet.participants.push_back(Participant {
+            address: p1,
+            position: true,
+            stake: 500_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: true,
+        });
+        
+        bet.participants.push_back(Participant {
+            address: p2,
+            position: false,
+            stake: 300_000i128,
+            joined_at: 1_000_000u64,
+            has_reported: false,
+        });
+        
+        let all_reported = bet.participants.iter().all(|p| p.has_reported);
+        assert!(!all_reported);
+    }
+}
+

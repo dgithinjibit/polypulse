@@ -3,6 +3,7 @@ members = [
     "contracts/market",
     "contracts/challenge",
     "contracts/multi-pool",
+    "contracts/p2p-bet",
 ]
 resolver = "2"
 

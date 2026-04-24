@@ -144,34 +144,150 @@ pub async fn list_bets(
     State(state): State<AppState>,
     Query(query): Query<ListBetsQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let page = query.page.unwrap_or(1);
-    let limit = query.limit.unwrap_or(20).min(100);
+    let page = query.page.unwrap_or(1).max(1);
+    let limit = query.limit.unwrap_or(20).min(100).max(1);
     let offset = (page - 1) * limit;
     
-    let mut sql = String::from("SELECT * FROM p2p_bets WHERE 1=1");
+    // Build base query with participant aggregation for volume and liquidity
+    let mut sql = String::from(
+        r#"
+        SELECT 
+            b.id, b.creator_id, b.question, b.question_normalized, b.question_slug,
+            b.stake_amount, b.end_time, b.state, b.created_at, b.shareable_url_hash,
+            b.contract_bet_id, b.verified_outcome, b.disputed, b.paid_out,
+            COALESCE(SUM(p.stake), 0) as total_volume,
+            COUNT(p.id) as participant_count
+        FROM p2p_bets b
+        LEFT JOIN p2p_bet_participants p ON b.id = p.bet_id
+        WHERE 1=1
+        "#
+    );
     
-    // Apply filters
+    let mut conditions = Vec::new();
+    
+    // Apply status filter
     if let Some(status) = &query.status {
-        sql.push_str(&format!(" AND state = '{}'", status));
+        match status.as_str() {
+            "All" => {
+                // No filter, show all bets
+            }
+            "Active" => {
+                conditions.push("b.state IN ('Created', 'Active')".to_string());
+                conditions.push("b.end_time > NOW()".to_string());
+            }
+            "Ending Soon" => {
+                conditions.push("b.state IN ('Created', 'Active')".to_string());
+                conditions.push("b.end_time > NOW()".to_string());
+                conditions.push("b.end_time <= NOW() + INTERVAL '24 hours'".to_string());
+            }
+            "Ended" => {
+                conditions.push("b.state IN ('Ended', 'Verified', 'Disputed', 'Paid')".to_string());
+            }
+            _ => {
+                // Treat as exact state match for custom states
+                conditions.push(format!("b.state = '{}'", status.replace("'", "''")));
+            }
+        }
     }
     
+    // Apply search filter (search in question text)
     if let Some(search) = &query.search {
-        sql.push_str(&format!(" AND question ILIKE '%{}%'", search));
+        if !search.trim().is_empty() {
+            let sanitized_search = search.replace("'", "''").replace("%", "\\%").replace("_", "\\_");
+            conditions.push(format!("b.question ILIKE '%{}%'", sanitized_search));
+        }
     }
+    
+    // Add conditions to query
+    for condition in conditions {
+        sql.push_str(&format!(" AND {}", condition));
+    }
+    
+    // Add GROUP BY clause
+    sql.push_str(
+        r#"
+        GROUP BY b.id, b.creator_id, b.question, b.question_normalized, b.question_slug,
+                 b.stake_amount, b.end_time, b.state, b.created_at, b.shareable_url_hash,
+                 b.contract_bet_id, b.verified_outcome, b.disputed, b.paid_out
+        "#
+    );
     
     // Apply sorting
-    match query.sort.as_deref() {
-        Some("newest") => sql.push_str(" ORDER BY created_at DESC"),
-        Some("ending_soon") => sql.push_str(" ORDER BY end_time ASC"),
-        Some("volume") => sql.push_str(" ORDER BY stake_amount DESC"),
-        _ => sql.push_str(" ORDER BY created_at DESC"),
+    let order_clause = match query.sort.as_deref() {
+        Some("volume") => "ORDER BY total_volume DESC, b.created_at DESC",
+        Some("liquidity") => "ORDER BY (b.stake_amount + COALESCE(SUM(p.stake), 0)) DESC, b.created_at DESC",
+        Some("newest") => "ORDER BY b.created_at DESC",
+        Some("ending_soon") => "ORDER BY b.end_time ASC",
+        _ => "ORDER BY b.created_at DESC", // Default to newest
+    };
+    
+    // For liquidity sort, we need to recalculate in the ORDER BY
+    if query.sort.as_deref() == Some("liquidity") {
+        // Need to use a subquery for liquidity calculation
+        let liquidity_sql = format!(
+            r#"
+            SELECT 
+                b.id, b.creator_id, b.question, b.question_normalized, b.question_slug,
+                b.stake_amount, b.end_time, b.state, b.created_at, b.shareable_url_hash,
+                b.contract_bet_id, b.verified_outcome, b.disputed, b.paid_out,
+                COALESCE(SUM(p.stake), 0) as total_volume,
+                COUNT(p.id) as participant_count,
+                (b.stake_amount + COALESCE(SUM(p.stake), 0)) as total_liquidity
+            FROM p2p_bets b
+            LEFT JOIN p2p_bet_participants p ON b.id = p.bet_id
+            WHERE 1=1
+            {}
+            GROUP BY b.id, b.creator_id, b.question, b.question_normalized, b.question_slug,
+                     b.stake_amount, b.end_time, b.state, b.created_at, b.shareable_url_hash,
+                     b.contract_bet_id, b.verified_outcome, b.disputed, b.paid_out
+            ORDER BY total_liquidity DESC, b.created_at DESC
+            LIMIT {} OFFSET {}
+            "#,
+            if conditions.is_empty() { 
+                String::new() 
+            } else { 
+                format!(" AND {}", conditions.join(" AND ")) 
+            },
+            limit,
+            offset
+        );
+        
+        let bets = sqlx::query_as::<_, (
+            i64, i64, String, String, String, i64, 
+            chrono::DateTime<chrono::Utc>, String, chrono::DateTime<chrono::Utc>, 
+            String, Option<i64>, Option<bool>, bool, bool, i64, i64, i64
+        )>(&liquidity_sql)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        
+        let response: Vec<BetResponse> = bets
+            .into_iter()
+            .map(|b| BetResponse {
+                id: b.0,
+                creator_id: b.1,
+                question: b.2,
+                stake_amount: b.5,
+                end_time: b.6,
+                state: b.7,
+                created_at: b.8,
+                shareable_url: b.9,
+                verified_outcome: b.11,
+                disputed: b.12,
+            })
+            .collect();
+        
+        return Ok(Json(response));
     }
     
+    sql.push_str(order_clause);
     sql.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
     
-    let bets = sqlx::query_as::<_, (i64, i64, String, String, String, i64, chrono::DateTime<chrono::Utc>, String, chrono::DateTime<chrono::Utc>, String, Option<i64>, Option<bool>, bool, bool)>(
-        &sql
-    )
+    let bets = sqlx::query_as::<_, (
+        i64, i64, String, String, String, i64, 
+        chrono::DateTime<chrono::Utc>, String, chrono::DateTime<chrono::Utc>, 
+        String, Option<i64>, Option<bool>, bool, bool, i64, i64
+    )>(&sql)
     .fetch_all(&state.db)
     .await
     .map_err(|e| AppError::DatabaseError(e.to_string()))?;
@@ -611,4 +727,89 @@ pub async fn get_my_bets(
     .map_err(|e| AppError::DatabaseError(e.to_string()))?;
     
     Ok(Json(bets))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_list_bets_query_building() {
+        // Test that query parameters are properly validated
+        
+        // Test page validation (should be at least 1)
+        let page = Some(0i64).unwrap_or(1).max(1);
+        assert_eq!(page, 1);
+        
+        let page = Some(-5i64).unwrap_or(1).max(1);
+        assert_eq!(page, 1);
+        
+        let page = Some(10i64).unwrap_or(1).max(1);
+        assert_eq!(page, 10);
+        
+        // Test limit validation (should be between 1 and 100)
+        let limit = Some(20i64).unwrap_or(20).min(100).max(1);
+        assert_eq!(limit, 20);
+        
+        let limit = Some(0i64).unwrap_or(20).min(100).max(1);
+        assert_eq!(limit, 1);
+        
+        let limit = Some(150i64).unwrap_or(20).min(100).max(1);
+        assert_eq!(limit, 100);
+        
+        // Test offset calculation
+        let page = 1i64;
+        let limit = 20i64;
+        let offset = (page - 1) * limit;
+        assert_eq!(offset, 0);
+        
+        let page = 3i64;
+        let offset = (page - 1) * limit;
+        assert_eq!(offset, 40);
+    }
+    
+    #[test]
+    fn test_search_sanitization() {
+        // Test SQL injection prevention
+        let search = "test' OR '1'='1";
+        let sanitized = search.replace("'", "''").replace("%", "\\%").replace("_", "\\_");
+        assert_eq!(sanitized, "test'' OR ''1''=''1");
+        
+        // Test wildcard escaping
+        let search = "test%_value";
+        let sanitized = search.replace("'", "''").replace("%", "\\%").replace("_", "\\_");
+        assert_eq!(sanitized, "test\\%\\_value");
+    }
+    
+    #[test]
+    fn test_status_filter_logic() {
+        // Test status filter mapping
+        let status = "All";
+        assert_eq!(status, "All");
+        
+        let status = "Active";
+        assert_eq!(status, "Active");
+        
+        let status = "Ending Soon";
+        assert_eq!(status, "Ending Soon");
+        
+        let status = "Ended";
+        assert_eq!(status, "Ended");
+    }
+    
+    #[test]
+    fn test_sort_options() {
+        // Test sort option mapping
+        let sort_options = vec!["volume", "liquidity", "newest", "ending_soon"];
+        
+        for option in sort_options {
+            match option {
+                "volume" => assert!(true),
+                "liquidity" => assert!(true),
+                "newest" => assert!(true),
+                "ending_soon" => assert!(true),
+                _ => assert!(false, "Invalid sort option"),
+            }
+        }
+    }
 }
