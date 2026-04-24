@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import rustApiClient from '../config/api'
 import { useAuth } from '../context/AuthContext'
+import LegalPageNav from '../components/LegalPageNav'
 
 interface LeaderboardEntry {
   rank: number
@@ -41,6 +42,8 @@ export default function Leaderboard() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <LegalPageNav currentPage="leaderboard" />
+      
       {/* Hero Header - Similar to Prediction Markets */}
       <div className="bg-gradient-polypulse-hero rounded-2xl p-8 mb-8 text-white shadow-xl">
         <h1 className="text-3xl font-bold mb-2">Leaderboard</h1>

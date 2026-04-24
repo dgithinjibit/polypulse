@@ -254,8 +254,8 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
       // STEP 5: Show success toast notification
       handleSuccess('Wallet Connected', `Connected to ${stellar.formatAddress(address)}`)
 
-      // STEP 6: Navigate to the onboarding/social login page
-      navigate('/social-login')
+      // STEP 6: Navigate to the markets dashboard
+      navigate('/markets')
     } catch (error: any) {
       // Connection failed at some step - clear the public key
       console.error('Wallet connection failed:', error)

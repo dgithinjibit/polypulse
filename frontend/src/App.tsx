@@ -76,8 +76,8 @@ export default function App() {
         {/* StellarWalletProvider: makes wallet state available via useStellarWallet() hook
             Must be inside BrowserRouter so it can call useNavigate() */}
         <StellarWalletProvider>
-          {/* Main layout wrapper: dark gradient background, full height, flex column */}
-          <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white flex flex-col">
+          {/* Main layout wrapper: light background for markets, dark for other pages */}
+          <div className="min-h-screen bg-white text-gray-900 flex flex-col">
             {/* Navbar: always visible at the top, shows wallet status and navigation links */}
             <Navbar />
 
