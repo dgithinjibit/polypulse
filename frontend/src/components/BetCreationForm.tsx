@@ -6,6 +6,7 @@ import rustApiClient from '../config/api';
 import { handleError, handleSuccess } from '../lib/error-handler';
 import { TransactionModal } from './TransactionModal';
 import { useTransaction } from '../hooks/useTransaction';
+import { parseTransactionError } from '../utils/errorHandling';
 
 interface BetCreationFormProps {
   onSuccess: (betId: string, shareableUrl: string) => void;
@@ -204,7 +205,9 @@ export function BetCreationForm({ onSuccess, onCancel }: BetCreationFormProps) {
       });
     } catch (error: any) {
       console.error('Error creating bet:', error);
-      handleError(error, {
+      const stakeXlm = parseFloat(formData.stakeAmount) || undefined;
+      const friendlyMessage = parseTransactionError(error, stakeXlm);
+      handleError(new Error(friendlyMessage), {
         title: 'Bet Creation Failed',
         onRetry: () => handleSubmit(e),
       });

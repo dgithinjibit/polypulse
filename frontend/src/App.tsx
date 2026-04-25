@@ -24,6 +24,7 @@
 // Routes: container for all Route definitions
 // Route: maps a URL path to a component
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
 
 // AuthProvider: provides user authentication state (JWT tokens, user profile)
 import { AuthProvider } from './context/AuthContext'
@@ -64,8 +65,9 @@ import SocialLogin from './pages/SocialLogin'     // Post-connect onboarding - /
 import Help from './pages/Help'                   // Help/FAQ page - /help
 import Terms from './pages/Terms'                 // Terms page - /terms
 import Privacy from './pages/Privacy'             // Privacy page - /privacy
-import BetDashboard from './pages/BetDashboard'   // P2P Betting Dashboard - /bets
-import BetDetailPage from './pages/BetDetailPage' // P2P Bet Detail - /bet/:id
+// Lazy-loaded heavy page components for code splitting
+const BetDashboard = lazy(() => import('./pages/BetDashboard'))   // P2P Betting Dashboard - /bets
+const BetDetailPage = lazy(() => import('./pages/BetDetailPage')) // P2P Bet Detail - /bet/:id
 
 // ============================================================
 // COMPONENT: App
@@ -123,10 +125,18 @@ export default function App() {
                 <Route path="/markets/:id" element={<MarketDetail />} />
 
                 {/* P2P Betting Dashboard */}
-                <Route path="/bets" element={<BetDashboard />} />
+                <Route path="/bets" element={
+                  <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
+                    <BetDashboard />
+                  </Suspense>
+                } />
 
                 {/* P2P Bet Detail Page - :id is the bet ID */}
-                <Route path="/bet/:id" element={<BetDetailPage />} />
+                <Route path="/bet/:id" element={
+                  <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
+                    <BetDetailPage />
+                  </Suspense>
+                } />
 
                 {/* Top traders leaderboard */}
                 <Route path="/leaderboard" element={<Leaderboard />} />

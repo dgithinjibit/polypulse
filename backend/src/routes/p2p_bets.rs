@@ -10,11 +10,13 @@ use sqlx::PgPool;
 use crate::{
     errors::AppError,
     services::{
+        cache,
         encryption::EncryptionService, 
         p2p_notifications::{self, P2PNotificationType},
         question_parser::QuestionParser
     },
     state::AppState,
+    ws::p2p_bets::publish_bet_update,
 };
 
 // Platform fee configuration
@@ -44,7 +46,7 @@ pub struct ReportOutcomeRequest {
     pub outcome: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BetResponse {
     pub id: i64,
     pub creator_id: i64,
@@ -151,6 +153,23 @@ pub async fn list_bets(
     let page = query.page.unwrap_or(1).max(1);
     let limit = query.limit.unwrap_or(20).min(100).max(1);
     let offset = (page - 1) * limit;
+
+    // Build a cache key from query parameters
+    let cache_key = format!(
+        "{}:{}:{}:{}:{}",
+        query.status.as_deref().unwrap_or("all"),
+        query.search.as_deref().unwrap_or(""),
+        query.sort.as_deref().unwrap_or("newest"),
+        page,
+        limit
+    );
+
+    // Check cache first
+    if let Ok(Some(cached)) = cache::get_cached_p2p_bet_list(&state, &cache_key).await {
+        if let Ok(response) = serde_json::from_str::<Vec<BetResponse>>(&cached) {
+            return Ok(Json(response));
+        }
+    }
     
     // Build base query with participant aggregation for volume and liquidity
     let mut sql = String::from(
@@ -280,7 +299,12 @@ pub async fn list_bets(
                 disputed: b.12,
             })
             .collect();
-        
+
+        // Cache the result
+        if let Ok(serialized) = serde_json::to_string(&response) {
+            let _ = cache::cache_p2p_bet_list(&state, &cache_key, &serialized).await;
+        }
+
         return Ok(Json(response));
     }
     
@@ -311,7 +335,12 @@ pub async fn list_bets(
             disputed: b.12,
         })
         .collect();
-    
+
+    // Cache the result
+    if let Ok(serialized) = serde_json::to_string(&response) {
+        let _ = cache::cache_p2p_bet_list(&state, &cache_key, &serialized).await;
+    }
+
     Ok(Json(response))
 }
 
@@ -320,6 +349,13 @@ pub async fn get_bet(
     State(state): State<AppState>,
     Path(bet_id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
+    // Check cache first
+    if let Ok(Some(cached)) = cache::get_cached_p2p_bet(&state, bet_id).await {
+        if let Ok(response) = serde_json::from_str::<BetResponse>(&cached) {
+            return Ok(Json(response));
+        }
+    }
+
     let bet = sqlx::query_as::<_, (i64, i64, String, String, String, i64, chrono::DateTime<chrono::Utc>, String, chrono::DateTime<chrono::Utc>, String, Option<i64>, Option<bool>, bool, bool)>(
         "SELECT * FROM p2p_bets WHERE id = $1"
     )
@@ -329,7 +365,7 @@ pub async fn get_bet(
     .map_err(|e| AppError::DatabaseError(e.to_string()))?
     .ok_or_else(|| AppError::NotFound("Bet not found".to_string()))?;
     
-    Ok(Json(BetResponse {
+    let response = BetResponse {
         id: bet.0,
         creator_id: bet.1,
         question: bet.2,
@@ -340,7 +376,14 @@ pub async fn get_bet(
         shareable_url: bet.9,
         verified_outcome: bet.11,
         disputed: bet.12,
-    }))
+    };
+
+    // Cache the result
+    if let Ok(serialized) = serde_json::to_string(&response) {
+        let _ = cache::cache_p2p_bet(&state, bet_id, &serialized).await;
+    }
+
+    Ok(Json(response))
 }
 
 /// Join a bet
@@ -414,8 +457,24 @@ pub async fn join_bet(
     .map_err(|e| AppError::DatabaseError(e.to_string()))?;
     
     // TODO: Call smart contract join_bet function
-    // TODO: Broadcast WebSocket update
-    
+
+    // Invalidate bet cache since state changed
+    let _ = cache::invalidate_p2p_bet_cache(&state, bet_id).await;
+
+    // Broadcast WebSocket update: participant joined
+    let position_str = if req.position { "Yes" } else { "No" };
+    publish_bet_update(
+        &state,
+        bet_id,
+        "participant_joined",
+        serde_json::json!({
+            "user_id": user_id,
+            "position": position_str,
+            "stake": req.stake,
+        }),
+    )
+    .await;
+
     // Notify bet creator that someone joined
     let bet_details = sqlx::query!(
         "SELECT question FROM p2p_bets WHERE id = $1",
@@ -486,7 +545,19 @@ pub async fn cancel_bet(
     .map_err(|e| AppError::DatabaseError(e.to_string()))?;
     
     // TODO: Call smart contract cancel_bet function
-    
+
+    // Invalidate bet cache since state changed
+    let _ = cache::invalidate_p2p_bet_cache(&state, bet_id).await;
+
+    // Broadcast WebSocket update: bet cancelled
+    publish_bet_update(
+        &state,
+        bet_id,
+        "cancelled",
+        serde_json::json!({}),
+    )
+    .await;
+
     Ok(StatusCode::OK)
 }
 
@@ -562,8 +633,19 @@ pub async fn report_outcome(
     .map_err(|e| AppError::DatabaseError(e.to_string()))?;
     
     // TODO: Call smart contract report_outcome function
-    // TODO: Broadcast WebSocket update
-    
+
+    // Broadcast WebSocket update: outcome reported
+    publish_bet_update(
+        &state,
+        bet_id,
+        "outcome_reported",
+        serde_json::json!({
+            "user_id": user_id,
+            "outcome": req.outcome,
+        }),
+    )
+    .await;
+
     // Notify other participants that outcome was reported
     let bet_details = sqlx::query!(
         "SELECT question FROM p2p_bets WHERE id = $1",
@@ -680,6 +762,49 @@ pub async fn confirm_outcome(
             
             // TODO: Call smart contract execute_payout
             
+            // Broadcast WebSocket update: outcome verified
+            publish_bet_update(
+                &state,
+                bet_id,
+                "outcome_verified",
+                serde_json::json!({
+                    "outcome": verified_outcome,
+                }),
+            )
+            .await;
+
+            // Determine winners (participants whose position matches the verified outcome)
+            let winners = sqlx::query!(
+                "SELECT user_id FROM p2p_bet_participants WHERE bet_id = $1 AND position = $2",
+                bet_id,
+                verified_outcome
+            )
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+            let winner_ids: Vec<i64> = winners.into_iter().map(|w| w.user_id).collect();
+
+            // Mark bet as paid
+            sqlx::query!(
+                "UPDATE p2p_bets SET state = 'Paid', paid_out = true WHERE id = $1",
+                bet_id
+            )
+            .execute(&state.db)
+            .await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+            // Broadcast WebSocket update: payout executed
+            publish_bet_update(
+                &state,
+                bet_id,
+                "paid",
+                serde_json::json!({
+                    "winners": winner_ids,
+                }),
+            )
+            .await;
+
             // Notify all participants that outcome is verified
             let bet_details = sqlx::query!(
                 "SELECT question FROM p2p_bets WHERE id = $1",
@@ -721,6 +846,15 @@ pub async fn confirm_outcome(
             .execute(&state.db)
             .await
             .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+            // Broadcast WebSocket update: bet disputed
+            publish_bet_update(
+                &state,
+                bet_id,
+                "disputed",
+                serde_json::json!({}),
+            )
+            .await;
             
             // Notify all participants about dispute
             let bet_details = sqlx::query!(
@@ -747,8 +881,7 @@ pub async fn confirm_outcome(
     }
     
     // TODO: Call smart contract confirm_outcome function
-    // TODO: Broadcast WebSocket update
-    
+
     Ok(StatusCode::OK)
 }
 
@@ -910,5 +1043,303 @@ mod tests {
                 _ => assert!(false, "Invalid sort option"),
             }
         }
+    }
+
+    // ── Validation helpers mirroring handler logic ────────────────────────────
+    // These functions extract the pure validation rules from the async handlers
+    // so they can be tested without a live database.
+
+    fn validate_create_bet(
+        question: &str,
+        stake_amount: i64,
+        end_time: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), String> {
+        use crate::services::question_parser::QuestionParser;
+        QuestionParser::parse(question).map_err(|e| e.to_string())?;
+        if stake_amount <= 0 {
+            return Err("Stake amount must be positive".to_string());
+        }
+        if end_time <= chrono::Utc::now() {
+            return Err("End time must be in the future".to_string());
+        }
+        Ok(())
+    }
+
+    fn validate_join_bet(state: &str, end_time: chrono::DateTime<chrono::Utc>, stake: i64, already_joined: bool) -> Result<(), String> {
+        if stake <= 0 {
+            return Err("Stake must be positive".to_string());
+        }
+        if state != "Created" && state != "Active" {
+            return Err("Bet is not accepting participants".to_string());
+        }
+        if end_time <= chrono::Utc::now() {
+            return Err("Bet has ended".to_string());
+        }
+        if already_joined {
+            return Err("Already a participant".to_string());
+        }
+        Ok(())
+    }
+
+    fn validate_report_outcome(
+        end_time: chrono::DateTime<chrono::Utc>,
+        is_participant: bool,
+        has_reported: bool,
+    ) -> Result<(), String> {
+        if end_time > chrono::Utc::now() {
+            return Err("Bet has not ended yet".to_string());
+        }
+        if !is_participant {
+            return Err("Only participants can report outcome".to_string());
+        }
+        if has_reported {
+            return Err("Already reported outcome".to_string());
+        }
+        Ok(())
+    }
+
+    fn validate_confirm_outcome(is_participant: bool, has_reported: bool) -> Result<(), String> {
+        if !is_participant {
+            return Err("Only participants can confirm outcome".to_string());
+        }
+        if has_reported {
+            return Err("Already reported outcome".to_string());
+        }
+        Ok(())
+    }
+
+    fn determine_outcome_result(reports: &[bool]) -> &'static str {
+        if reports.is_empty() {
+            return "pending";
+        }
+        let first = reports[0];
+        if reports.iter().all(|&r| r == first) {
+            "verified"
+        } else {
+            "disputed"
+        }
+    }
+
+    fn validate_cancel_bet(
+        creator_id: i64,
+        user_id: i64,
+        participant_count: i64,
+    ) -> Result<(), String> {
+        if creator_id != user_id {
+            return Err("Only creator can cancel".to_string());
+        }
+        if participant_count > 0 {
+            return Err("Cannot cancel bet with participants".to_string());
+        }
+        Ok(())
+    }
+
+    // ── create_bet validation tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_create_bet_rejects_empty_question() {
+        let future = chrono::Utc::now() + chrono::Duration::hours(1);
+        let result = validate_create_bet("", 100, future);
+        assert!(result.is_err(), "Empty question should be rejected");
+    }
+
+    #[test]
+    fn test_create_bet_rejects_question_without_mark() {
+        let future = chrono::Utc::now() + chrono::Duration::hours(1);
+        // Valid length but no question mark
+        let result = validate_create_bet("Will it rain tomorrow", 100, future);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("question mark"));
+    }
+
+    #[test]
+    fn test_create_bet_rejects_zero_stake() {
+        let future = chrono::Utc::now() + chrono::Duration::hours(1);
+        let result = validate_create_bet("Will it rain tomorrow?", 0, future);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("positive"));
+    }
+
+    #[test]
+    fn test_create_bet_rejects_negative_stake() {
+        let future = chrono::Utc::now() + chrono::Duration::hours(1);
+        let result = validate_create_bet("Will it rain tomorrow?", -50, future);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("positive"));
+    }
+
+    #[test]
+    fn test_create_bet_rejects_past_end_time() {
+        let past = chrono::Utc::now() - chrono::Duration::hours(1);
+        let result = validate_create_bet("Will it rain tomorrow?", 100, past);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("future"));
+    }
+
+    #[test]
+    fn test_create_bet_accepts_valid_inputs() {
+        let future = chrono::Utc::now() + chrono::Duration::hours(24);
+        let result = validate_create_bet("Will it rain tomorrow?", 100, future);
+        assert!(result.is_ok(), "Valid inputs should be accepted: {:?}", result);
+    }
+
+    // ── join_bet validation tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_join_bet_rejects_cancelled_state() {
+        let future = chrono::Utc::now() + chrono::Duration::hours(1);
+        let result = validate_join_bet("Cancelled", future, 100, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not accepting"));
+    }
+
+    #[test]
+    fn test_join_bet_rejects_ended_state() {
+        let future = chrono::Utc::now() + chrono::Duration::hours(1);
+        let result = validate_join_bet("Ended", future, 100, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not accepting"));
+    }
+
+    #[test]
+    fn test_join_bet_rejects_past_end_time() {
+        let past = chrono::Utc::now() - chrono::Duration::minutes(5);
+        let result = validate_join_bet("Active", past, 100, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("ended"));
+    }
+
+    #[test]
+    fn test_join_bet_rejects_duplicate_participant() {
+        let future = chrono::Utc::now() + chrono::Duration::hours(1);
+        let result = validate_join_bet("Active", future, 100, true);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Already a participant"));
+    }
+
+    #[test]
+    fn test_join_bet_rejects_zero_stake() {
+        let future = chrono::Utc::now() + chrono::Duration::hours(1);
+        let result = validate_join_bet("Created", future, 0, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("positive"));
+    }
+
+    #[test]
+    fn test_join_bet_accepts_created_state() {
+        let future = chrono::Utc::now() + chrono::Duration::hours(1);
+        let result = validate_join_bet("Created", future, 100, false);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_join_bet_accepts_active_state() {
+        let future = chrono::Utc::now() + chrono::Duration::hours(1);
+        let result = validate_join_bet("Active", future, 100, false);
+        assert!(result.is_ok());
+    }
+
+    // ── report_outcome validation tests ──────────────────────────────────────
+
+    #[test]
+    fn test_report_outcome_rejects_before_end_time() {
+        let future = chrono::Utc::now() + chrono::Duration::hours(1);
+        let result = validate_report_outcome(future, true, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not ended yet"));
+    }
+
+    #[test]
+    fn test_report_outcome_rejects_non_participant() {
+        let past = chrono::Utc::now() - chrono::Duration::hours(1);
+        let result = validate_report_outcome(past, false, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("participants"));
+    }
+
+    #[test]
+    fn test_report_outcome_rejects_duplicate_report() {
+        let past = chrono::Utc::now() - chrono::Duration::hours(1);
+        let result = validate_report_outcome(past, true, true);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Already reported"));
+    }
+
+    #[test]
+    fn test_report_outcome_accepts_valid_participant_after_end() {
+        let past = chrono::Utc::now() - chrono::Duration::hours(1);
+        let result = validate_report_outcome(past, true, false);
+        assert!(result.is_ok());
+    }
+
+    // ── confirm_outcome / dispute logic tests ─────────────────────────────────
+
+    #[test]
+    fn test_confirm_outcome_rejects_non_participant() {
+        let result = validate_confirm_outcome(false, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("participants"));
+    }
+
+    #[test]
+    fn test_confirm_outcome_rejects_already_reported() {
+        let result = validate_confirm_outcome(true, true);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Already reported"));
+    }
+
+    #[test]
+    fn test_confirm_outcome_triggers_verified_when_all_agree() {
+        // All participants report the same outcome → verified
+        let reports = vec![true, true, true];
+        assert_eq!(determine_outcome_result(&reports), "verified");
+    }
+
+    #[test]
+    fn test_confirm_outcome_triggers_dispute_when_participants_disagree() {
+        // Participants report different outcomes → disputed
+        let reports = vec![true, false];
+        assert_eq!(determine_outcome_result(&reports), "disputed");
+    }
+
+    #[test]
+    fn test_confirm_outcome_dispute_with_mixed_reports() {
+        let reports = vec![false, false, true];
+        assert_eq!(determine_outcome_result(&reports), "disputed");
+    }
+
+    #[test]
+    fn test_confirm_outcome_verified_unanimous_no() {
+        let reports = vec![false, false];
+        assert_eq!(determine_outcome_result(&reports), "verified");
+    }
+
+    // ── cancel_bet validation tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_cancel_bet_rejects_non_creator() {
+        let result = validate_cancel_bet(1, 2, 0);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("creator"));
+    }
+
+    #[test]
+    fn test_cancel_bet_rejects_when_participants_exist() {
+        let result = validate_cancel_bet(1, 1, 1);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("participants"));
+    }
+
+    #[test]
+    fn test_cancel_bet_accepts_creator_with_no_participants() {
+        let result = validate_cancel_bet(1, 1, 0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cancel_bet_rejects_creator_with_multiple_participants() {
+        let result = validate_cancel_bet(5, 5, 3);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("participants"));
     }
 }

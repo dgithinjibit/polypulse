@@ -7,7 +7,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { handleError, handleSuccess } from '../lib/error-handler';
 import rustApiClient from '../config/api';
 import LoadingOverlay from '../components/LoadingOverlay';
-import { EncryptionService } from '../services/encryption';
+import { parseTransactionError } from '../utils/errorHandling';
 
 export default function BetDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,70 +24,64 @@ export default function BetDetailPage() {
   const [stakeAmount, setStakeAmount] = useState('');
   const [decryptionError, setDecryptionError] = useState<string | null>(null);
 
-  // Requirement 3.6: Decrypt bet ID from shareable URL
-  const decryptBetId = useCallback(async (encryptedId: string): Promise<string | null> => {
-    try {
-      const secret = import.meta.env.VITE_ENCRYPTION_SECRET || 'default_secret';
-      const decryptedId = await EncryptionService.decryptBetId(encryptedId, secret);
-      return decryptedId;
-    } catch (error) {
-      console.error('Error decrypting bet ID:', error);
-      // Return null to indicate decryption failure
-      return null;
-    }
+  // Requirement 3.6: Determine if the route param looks like an encrypted ID
+  const isEncryptedId = useCallback((value: string): boolean => {
+    // Encrypted IDs are URL-safe base64 strings: longer than a numeric ID,
+    // and may contain hyphens or underscores (URL-safe base64 chars)
+    return value.length > 20 && !/^\d+$/.test(value);
   }, []);
 
-  // Requirement 3.6: Determine if ID is encrypted and decrypt if needed
-  const resolveBetId = useCallback(async (): Promise<string | null> => {
-    if (!id) return null;
-
-    // Check if there's a 'bet' query parameter (encrypted shareable URL format)
-    const encryptedParam = searchParams.get('bet');
-    if (encryptedParam) {
-      // URL format: /bet/:slug?bet=encrypted_id
-      return await decryptBetId(encryptedParam);
-    }
-
-    // Check if the ID looks like an encrypted string (contains URL-safe base64 chars)
-    // Encrypted IDs will be longer and contain - or _ characters
-    if (id.length > 20 && (id.includes('-') || id.includes('_'))) {
-      return await decryptBetId(id);
-    }
-
-    // Otherwise, treat as regular numeric ID
-    return id;
-  }, [id, searchParams, decryptBetId]);
-
   const fetchBet = useCallback(async () => {
+    if (!id) return;
+
     try {
       setLoading(true);
       setDecryptionError(null);
 
-      // Requirement 3.6: Resolve bet ID (decrypt if encrypted)
-      const resolvedId = await resolveBetId();
+      // Check if there's a 'bet' query parameter (encrypted shareable URL format)
+      // e.g. /bet/some-slug?bet=<encrypted_id>
+      const encryptedParam = searchParams.get('bet');
 
-      if (!resolvedId) {
-        setDecryptionError('Invalid or expired shareable link');
-        setLoading(false);
+      if (encryptedParam) {
+        // Requirement 3.6: Use backend share endpoint to resolve encrypted ID
+        const response = await rustApiClient.get(
+          `/api/v1/p2p-bets/share/${encodeURIComponent(encryptedParam)}`
+        );
+        setBet(response.data);
         return;
       }
 
-      // Requirement 3.6: Fetch bet details using decrypted ID
-      const response = await rustApiClient.get(`/api/v1/p2p-bets/${resolvedId}`);
+      if (isEncryptedId(id)) {
+        // Requirement 3.6: Path param is an encrypted ID — resolve via backend share endpoint
+        const response = await rustApiClient.get(
+          `/api/v1/p2p-bets/share/${encodeURIComponent(id)}`
+        );
+        setBet(response.data);
+        return;
+      }
+
+      // Regular numeric bet ID — fetch directly
+      const response = await rustApiClient.get(`/api/v1/p2p-bets/${id}`);
       setBet(response.data);
     } catch (error: any) {
       console.error('Error fetching bet:', error);
-      
-      // Requirement 3.9: Handle invalid/expired URLs with error message
-      if (error.response?.status === 404) {
-        setDecryptionError('Bet not found. The link may be invalid or the bet may have been removed.');
+
+      // Requirement 3.9: Handle invalid/expired URLs with user-friendly error message
+      if (error.response?.status === 400) {
+        setDecryptionError(
+          'This link is invalid or has expired. Please ask the bet creator for a new link.'
+        );
+      } else if (error.response?.status === 404) {
+        setDecryptionError(
+          'Bet not found. The link may be invalid or the bet may have been removed.'
+        );
       } else {
         handleError(error, { title: 'Failed to Load Bet' });
       }
     } finally {
       setLoading(false);
     }
-  }, [resolveBetId]);
+  }, [id, searchParams, isEncryptedId]);
 
   useEffect(() => {
     fetchBet();
@@ -276,7 +270,9 @@ export default function BetDetailPage() {
       fetchBet();
     } catch (error: any) {
       console.error('Error joining bet:', error);
-      handleError(error, {
+      const stakeXlm = parseFloat(stakeAmount) || undefined;
+      const friendlyMessage = parseTransactionError(error, stakeXlm);
+      handleError(new Error(friendlyMessage), {
         title: 'Failed to Join Bet',
         onRetry: handleJoinBet,
       });
@@ -351,10 +347,14 @@ export default function BetDetailPage() {
             </svg>
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            {decryptionError ? 'Invalid Link' : 'Bet Not Found'}
+            {decryptionError?.includes('invalid or has expired')
+              ? 'Link Expired or Invalid'
+              : decryptionError
+              ? 'Invalid Link'
+              : 'Bet Not Found'}
           </h2>
           <p className="text-gray-600 mb-6">
-            {decryptionError || 
+            {decryptionError ||
               "The bet you're looking for doesn't exist or has been removed."}
           </p>
           <button

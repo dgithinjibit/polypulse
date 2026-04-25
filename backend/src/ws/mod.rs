@@ -20,6 +20,9 @@ use uuid::Uuid;
 
 use crate::{errors::AppError, middleware::auth::Claims, state::AppState};
 
+pub mod p2p_bets;
+pub use p2p_bets::{p2p_bets_ws_handler, P2PConnectionRegistry};
+
 const CHANNEL_CAPACITY: usize = 64;
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
 const MAX_CONNECTIONS_PER_USER: usize = 5;

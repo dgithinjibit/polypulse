@@ -118,6 +118,101 @@ pub async fn invalidate_market_prices_cache(state: &AppState, poll_id: i64) -> R
     Ok(())
 }
 
+// ---- P2P Bet Caching ----
+
+/// Cache TTL for P2P bet details (60 seconds)
+const P2P_BET_CACHE_TTL: u64 = 60;
+
+/// Cache TTL for P2P bet list (30 seconds)
+const P2P_BET_LIST_CACHE_TTL: u64 = 30;
+
+/// Get cached P2P bet details from Redis
+pub async fn get_cached_p2p_bet(state: &AppState, bet_id: i64) -> Result<Option<String>> {
+    let mut conn = state
+        .redis()
+        .get()
+        .await
+        .context("Failed to get Redis connection")?;
+
+    let key = format!("p2p_bet:{}", bet_id);
+    let cached: Option<String> = conn.get(&key).await.unwrap_or(None);
+
+    if cached.is_some() {
+        debug!("P2P bet cache hit for bet_id={}", bet_id);
+    }
+
+    Ok(cached)
+}
+
+/// Cache P2P bet details in Redis with 60-second TTL
+pub async fn cache_p2p_bet(state: &AppState, bet_id: i64, data: &str) -> Result<()> {
+    let mut conn = state
+        .redis()
+        .get()
+        .await
+        .context("Failed to get Redis connection")?;
+
+    let key = format!("p2p_bet:{}", bet_id);
+    let _: () = conn
+        .set_ex(&key, data, P2P_BET_CACHE_TTL)
+        .await
+        .context("Failed to cache P2P bet")?;
+
+    debug!("Cached p2p_bet_id={} with TTL={}s", bet_id, P2P_BET_CACHE_TTL);
+    Ok(())
+}
+
+/// Invalidate cached P2P bet details
+pub async fn invalidate_p2p_bet_cache(state: &AppState, bet_id: i64) -> Result<()> {
+    let mut conn = state
+        .redis()
+        .get()
+        .await
+        .context("Failed to get Redis connection")?;
+
+    let key = format!("p2p_bet:{}", bet_id);
+    let _: () = conn.del(&key).await.context("Failed to invalidate P2P bet cache")?;
+
+    debug!("Invalidated cache for p2p_bet_id={}", bet_id);
+    Ok(())
+}
+
+/// Get cached P2P bet list from Redis
+pub async fn get_cached_p2p_bet_list(state: &AppState, cache_key: &str) -> Result<Option<String>> {
+    let mut conn = state
+        .redis()
+        .get()
+        .await
+        .context("Failed to get Redis connection")?;
+
+    let key = format!("p2p_bets:list:{}", cache_key);
+    let cached: Option<String> = conn.get(&key).await.unwrap_or(None);
+
+    if cached.is_some() {
+        debug!("P2P bet list cache hit for key={}", cache_key);
+    }
+
+    Ok(cached)
+}
+
+/// Cache P2P bet list in Redis with 30-second TTL
+pub async fn cache_p2p_bet_list(state: &AppState, cache_key: &str, data: &str) -> Result<()> {
+    let mut conn = state
+        .redis()
+        .get()
+        .await
+        .context("Failed to get Redis connection")?;
+
+    let key = format!("p2p_bets:list:{}", cache_key);
+    let _: () = conn
+        .set_ex(&key, data, P2P_BET_LIST_CACHE_TTL)
+        .await
+        .context("Failed to cache P2P bet list")?;
+
+    debug!("Cached P2P bet list key={} with TTL={}s", cache_key, P2P_BET_LIST_CACHE_TTL);
+    Ok(())
+}
+
 
 #[cfg(test)]
 mod tests {

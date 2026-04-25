@@ -40,11 +40,12 @@ export function classifyError(error: any): TransactionError {
     errorMessage.includes('user rejected') ||
     errorMessage.includes('user denied') ||
     errorMessage.includes('cancelled') ||
+    errorMessage.includes('user declined') ||
     errorCode === 'user_rejected'
   ) {
     return {
       type: 'user_rejected',
-      message: 'You cancelled the transaction. Please try again if you want to proceed.',
+      message: 'Transaction cancelled by user.',
       isRecoverable: true,
     };
   }
@@ -53,7 +54,9 @@ export function classifyError(error: any): TransactionError {
   if (
     errorMessage.includes('insufficient') ||
     errorMessage.includes('not enough') ||
-    errorMessage.includes('balance')
+    errorMessage.includes('balance') ||
+    errorMessage.includes('underfunded') ||
+    errorMessage.includes('op_underfunded')
   ) {
     return {
       type: 'insufficient_balance',
@@ -66,7 +69,7 @@ export function classifyError(error: any): TransactionError {
   if (
     errorMessage.includes('network') ||
     errorMessage.includes('connection') ||
-    errorMessage.includes('timeout') ||
+    errorMessage.includes('failed to fetch') ||
     errorMessage.includes('horizon') ||
     errorCode === 'econnrefused' ||
     errorCode === 'err_network'

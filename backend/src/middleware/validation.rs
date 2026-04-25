@@ -155,6 +155,42 @@ pub fn validate_poll_options_count(options_count: usize) -> Result<(), AppError>
     Ok(())
 }
 
+// ─── Stellar Address Validation ──────────────────────────────────────────────
+
+/// Validates a Stellar public key (address) format.
+///
+/// Stellar addresses are 56-character strings starting with 'G' and encoded
+/// in base32 (Stellar's strkey format).
+///
+/// # Arguments
+/// * `address` - The Stellar address to validate
+///
+/// # Returns
+/// * `Ok(())` if valid
+/// * `Err(AppError::BadRequest)` if invalid
+pub fn validate_stellar_address(address: &str) -> Result<(), AppError> {
+    if address.len() != 56 {
+        return Err(AppError::BadRequest(
+            "Invalid Stellar address: must be exactly 56 characters".to_string(),
+        ));
+    }
+    if !address.starts_with('G') {
+        return Err(AppError::BadRequest(
+            "Invalid Stellar address: must start with 'G'".to_string(),
+        ));
+    }
+    // Verify all characters are valid base32 (uppercase alphanumeric, no 0/O/I/L)
+    let valid_chars = address.chars().all(|c| {
+        matches!(c, 'A'..='Z' | '2'..='7')
+    });
+    if !valid_chars {
+        return Err(AppError::BadRequest(
+            "Invalid Stellar address: contains invalid characters".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 // ─── Content Sanitization ─────────────────────────────────────────────────────
 
 /// Sanitizes comment content to prevent XSS attacks.
@@ -305,5 +341,31 @@ mod tests {
         // Empty after sanitization
         assert!(validate_and_sanitize_comment("   ").is_err());
         assert!(validate_and_sanitize_comment("").is_err());
+    }
+
+    #[test]
+    fn test_validate_stellar_address() {
+        // Valid Stellar address (56 chars, starts with G, valid base32)
+        let valid = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+        assert!(validate_stellar_address(valid).is_ok());
+
+        // Too short
+        assert!(validate_stellar_address("GABC123").is_err());
+
+        // Too long
+        let too_long = format!("G{}", "A".repeat(56));
+        assert!(validate_stellar_address(&too_long).is_err());
+
+        // Doesn't start with G
+        let bad_prefix = format!("X{}", "A".repeat(55));
+        assert!(validate_stellar_address(&bad_prefix).is_err());
+
+        // Contains invalid base32 characters (0, O, I, L are not in Stellar's alphabet)
+        let with_zero = format!("G{}0{}", "A".repeat(27), "A".repeat(27));
+        assert!(validate_stellar_address(&with_zero).is_err());
+
+        // Lowercase not valid
+        let lowercase = format!("g{}", "a".repeat(55));
+        assert!(validate_stellar_address(&lowercase).is_err());
     }
 }

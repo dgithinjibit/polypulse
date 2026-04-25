@@ -5,6 +5,7 @@ import { handleError, handleSuccess } from '../lib/error-handler';
 import rustApiClient from '../config/api';
 import { TransactionModal } from './TransactionModal';
 import { useTransaction } from '../hooks/useTransaction';
+import { parseTransactionError } from '../utils/errorHandling';
 
 interface OutcomeReportingModalProps {
   betId: string;
@@ -148,11 +149,12 @@ export function OutcomeReportingModal({
       });
     } catch (err: any) {
       console.error('Error submitting outcome:', err);
-      handleError(err, {
+      const friendlyMessage = parseTransactionError(err);
+      handleError(new Error(friendlyMessage), {
         title: 'Outcome Submission Failed',
         onRetry: handleSubmit,
       });
-      setError('Failed to submit outcome. Please try again.');
+      setError(friendlyMessage);
     }
   };
 

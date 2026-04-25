@@ -22,6 +22,8 @@ pub enum RateLimitTier {
     Trading,
     /// M-Pesa endpoints: 5 requests per minute
     MPesa,
+    /// P2P bet write endpoints (create, join, report): 20 requests per minute
+    P2PWrite,
 }
 
 impl RateLimitTier {
@@ -33,6 +35,7 @@ impl RateLimitTier {
             RateLimitTier::Auth => 10,
             RateLimitTier::Trading => 30,
             RateLimitTier::MPesa => 5,
+            RateLimitTier::P2PWrite => 20,
         }
     }
 
@@ -66,6 +69,7 @@ fn tier_name(tier: RateLimitTier) -> &'static str {
         RateLimitTier::Auth => "auth_endpoint",
         RateLimitTier::Trading => "trading",
         RateLimitTier::MPesa => "mpesa",
+        RateLimitTier::P2PWrite => "p2p_write",
     }
 }
 
@@ -193,6 +197,19 @@ pub async fn rate_limit_mpesa(
     Ok(next.run(req).await)
 }
 
+/// Middleware for P2P bet write endpoints (20 req/min)
+/// Applied to create, join, cancel, report-outcome, confirm-outcome endpoints
+/// to prevent spam and abuse of the P2P betting system.
+pub async fn rate_limit_p2p_write(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    let key = get_rate_limit_key(&req, RateLimitTier::P2PWrite);
+    check_rate_limit(&state, &key, RateLimitTier::P2PWrite).await?;
+    Ok(next.run(req).await)
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -205,6 +222,7 @@ mod tests {
         assert_eq!(RateLimitTier::Auth.limit(), 10);
         assert_eq!(RateLimitTier::Trading.limit(), 30);
         assert_eq!(RateLimitTier::MPesa.limit(), 5);
+        assert_eq!(RateLimitTier::P2PWrite.limit(), 20);
     }
 
     #[test]
@@ -214,6 +232,7 @@ mod tests {
         assert_eq!(RateLimitTier::Auth.window_seconds(), 60);
         assert_eq!(RateLimitTier::Trading.window_seconds(), 60);
         assert_eq!(RateLimitTier::MPesa.window_seconds(), 60);
+        assert_eq!(RateLimitTier::P2PWrite.window_seconds(), 60);
     }
 
     #[test]
@@ -223,5 +242,6 @@ mod tests {
         assert_eq!(tier_name(RateLimitTier::Auth), "auth_endpoint");
         assert_eq!(tier_name(RateLimitTier::Trading), "trading");
         assert_eq!(tier_name(RateLimitTier::MPesa), "mpesa");
+        assert_eq!(tier_name(RateLimitTier::P2PWrite), "p2p_write");
     }
 }

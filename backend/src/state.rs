@@ -48,9 +48,10 @@ use crate::{
     config::Config,  // Our configuration struct
     db,              // Database pool creation function
     ws::{
-        BroadcastHub,        // Hub for broadcasting messages to WebSocket clients
-        ConnectionRegistry,  // Registry tracking active WebSocket connections
-        MarketHub,           // Hub for market-specific WebSocket channels
+        BroadcastHub,           // Hub for broadcasting messages to WebSocket clients
+        ConnectionRegistry,     // Registry tracking active WebSocket connections
+        MarketHub,              // Hub for market-specific WebSocket channels
+        P2PConnectionRegistry,  // Registry for P2P bet WebSocket subscriptions
     }
 };
 
@@ -83,6 +84,11 @@ pub struct AppState {
     /// Hub for broadcasting messages to all connected WebSocket clients.
     /// Used for system-wide notifications and real-time updates.
     pub broadcast_hub: BroadcastHub,
+
+    /// Registry for P2P bet WebSocket subscriptions.
+    /// Tracks which connections are subscribed to which bet IDs and
+    /// provides broadcasting to bet-specific subscriber sets.
+    pub p2p_registry: P2PConnectionRegistry,
 } // end AppState struct
 
 // ============================================================
@@ -147,6 +153,9 @@ impl AppState {
         // Takes a clone of the broadcast hub to send messages
         let market_hub = MarketHub::new(broadcast_hub.clone());
 
+        // P2PConnectionRegistry: tracks P2P bet WebSocket subscriptions
+        let p2p_registry = P2PConnectionRegistry::new();
+
         // Assemble and return the complete AppState
         Ok(Self {
             // Wrap the core data in Arc for cheap cloning across request handlers
@@ -154,6 +163,7 @@ impl AppState {
             market_hub,
             connection_registry,
             broadcast_hub,
+            p2p_registry,
         })
     } // end new
 
@@ -202,4 +212,14 @@ impl AppState {
     pub fn broadcast_hub(&self) -> &BroadcastHub {
         &self.broadcast_hub
     } // end broadcast_hub
+
+    // ============================================================
+    // ACCESSOR: p2p_registry
+    // PURPOSE: Returns a reference to the P2P bet WebSocket registry.
+    //          Used by the P2P bets WebSocket handler and API routes
+    //          to manage subscriptions and broadcast bet updates.
+    // ============================================================
+    pub fn p2p_registry(&self) -> &P2PConnectionRegistry {
+        &self.p2p_registry
+    } // end p2p_registry
 } // end impl AppState

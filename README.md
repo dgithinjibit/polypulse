@@ -12,6 +12,92 @@ A Web3 prediction markets platform where users trade on real-world outcomes usin
 
 ---
 
+## P2P Betting
+
+PolyPulse supports fully peer-to-peer bets where any user can create a bet on any real-world event, share it with friends, and settle the outcome through mutual verification — all backed by Soroban smart contracts on Stellar.
+
+### How it works
+
+1. **Create a bet** — Connect your Freighter wallet, click "Create Your Bet", enter a question (e.g. "Will it rain in Nairobi tomorrow?"), set your stake in XLM, and pick an end time. The smart contract locks your stake on-chain.
+
+2. **Share the link** — After creation you get a shareable URL. Copy it and send it to whoever you want to bet against.
+
+3. **Join a bet** — Anyone with the link can open it, pick Yes or No, and stake XLM. The contract locks their stake too.
+
+4. **Report the outcome** — Once the end time passes, any participant can click "Report Outcome" and select Yes or No.
+
+5. **Confirm the outcome** — Other participants confirm (or dispute) the reported outcome. When all participants agree, the smart contract automatically pays out the full pool (minus 2% platform fee) to the winners.
+
+6. **Dispute resolution** — If participants disagree, the bet enters a Disputed state and funds are locked until a PolyPulse admin resolves it.
+
+### Key environment variables
+
+| Variable | Description |
+|---|---|
+| `ENCRYPTION_SECRET` | Secret key used to encrypt/decrypt bet IDs in shareable URLs |
+| `STELLAR_P2P_BET_CONTRACT_ID` | Deployed P2P Bet Soroban contract address |
+| `VITE_STELLAR_P2P_BET_CONTRACT_ID` | Same contract address for the frontend |
+
+### Relevant files
+
+| Path | Description |
+|---|---|
+| `contracts/contracts/p2p-bet/src/lib.rs` | Soroban smart contract |
+| `backend/src/routes/p2p_bets.rs` | REST API handlers |
+| `backend/src/services/encryption.rs` | Shareable URL encryption |
+| `backend/src/services/question_parser.rs` | Question validation & slug generation |
+| `backend/migrations/20240301000001_p2p_bets.sql` | Database schema |
+| `frontend/src/components/BetCreationForm.tsx` | Bet creation UI |
+| `frontend/src/components/OutcomeReportingModal.tsx` | Outcome reporting UI |
+| `frontend/src/pages/BetDashboard.tsx` | Main betting dashboard |
+| `docs/p2p-betting-api.md` | Full API reference |
+| `P2P_DEPLOYMENT_CHECKLIST.md` | Deployment checklist |
+
+---
+
+## P2P Betting
+
+PolyPulse supports fully peer-to-peer bets where any user can create a bet on any real-world event, share it with friends, and settle the outcome through mutual verification — all backed by Soroban smart contracts on Stellar.
+
+### How it works
+
+1. **Create a bet** — Connect your Freighter wallet, click "Create Your Bet", enter a question (e.g. "Will it rain in Nairobi tomorrow?"), set your stake in XLM, and pick an end time. The smart contract locks your stake on-chain.
+
+2. **Share the link** — After creation you get a shareable URL like `will-it-rain-creator-alice.polypulse.co.ke`. Copy it and send it to whoever you want to bet against.
+
+3. **Join a bet** — Anyone with the link can open it, pick Yes or No, and stake XLM. The contract locks their stake too.
+
+4. **Report the outcome** — Once the end time passes, any participant can click "Report Outcome" and select Yes or No.
+
+5. **Confirm the outcome** — Other participants confirm (or dispute) the reported outcome. When all participants agree, the smart contract automatically pays out the full pool (minus 2% platform fee) to the winners.
+
+6. **Dispute resolution** — If participants disagree, the bet enters a Disputed state and funds are locked until a PolyPulse admin resolves it via `admin_resolve_dispute`.
+
+### Key environment variables
+
+| Variable | Description |
+|---|---|
+| `ENCRYPTION_SECRET` | Secret key used to encrypt/decrypt bet IDs in shareable URLs |
+| `STELLAR_P2P_BET_CONTRACT_ID` | Deployed P2P Bet Soroban contract address |
+| `VITE_STELLAR_P2P_BET_CONTRACT_ID` | Same contract address for the frontend |
+
+### Relevant files
+
+| Path | Description |
+|---|---|
+| `contracts/contracts/p2p-bet/src/lib.rs` | Soroban smart contract |
+| `backend/src/routes/p2p_bets.rs` | REST API handlers |
+| `backend/src/services/encryption.rs` | Shareable URL encryption |
+| `backend/src/services/question_parser.rs` | Question validation & slug generation |
+| `backend/migrations/20240301000001_p2p_bets.sql` | Database schema |
+| `frontend/src/components/BetCreationForm.tsx` | Bet creation UI |
+| `frontend/src/components/OutcomeReportingModal.tsx` | Outcome reporting UI |
+| `frontend/src/pages/BetDashboard.tsx` | Main betting dashboard |
+| `docs/p2p-betting-api.md` | Full API reference |
+| `P2P_DEPLOYMENT_CHECKLIST.md` | Deployment checklist |
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |

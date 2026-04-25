@@ -230,8 +230,10 @@ pub fn build_router(state: AppState) -> Router {
     // WebSocket connections are long-lived - rate limiting doesn't apply the same way.
     // Auth is handled via query parameter in the WebSocket handshake.
     let websocket = Router::new()
-        // GET /ws - WebSocket upgrade endpoint for real-time updates
-        .route("/ws", get(ws::ws_handler));
+        // GET /ws - WebSocket upgrade endpoint for real-time poll/market updates
+        .route("/ws", get(ws::ws_handler))
+        // GET /ws/p2p-bets - WebSocket upgrade endpoint for P2P bet real-time updates
+        .route("/ws/p2p-bets", get(ws::p2p_bets_ws_handler));
 
     // ---- PROTECTED ROUTES (JWT required + general rate limit) ----
     // These endpoints require a valid JWT token (enforced by require_auth middleware).
@@ -321,27 +323,12 @@ pub fn build_router(state: AppState) -> Router {
         // GET /api/v1/users/me/portfolio - Get the current user's prediction portfolio
         .route("/api/v1/users/me/portfolio", get(users::get_portfolio))
 
-        // P2P Bets routes
-        // POST /api/v1/p2p-bets - Create a new P2P bet
-        .route("/api/v1/p2p-bets", post(p2p_bets::create_bet))
-
+        // P2P Bets read-only routes (general rate limit)
         // GET /api/v1/p2p-bets - List P2P bets with filters
         .route("/api/v1/p2p-bets", get(p2p_bets::list_bets))
 
         // GET /api/v1/p2p-bets/:id - Get P2P bet details
         .route("/api/v1/p2p-bets/:id", get(p2p_bets::get_bet))
-
-        // POST /api/v1/p2p-bets/:id/join - Join a P2P bet
-        .route("/api/v1/p2p-bets/:id/join", post(p2p_bets::join_bet))
-
-        // POST /api/v1/p2p-bets/:id/cancel - Cancel a P2P bet
-        .route("/api/v1/p2p-bets/:id/cancel", post(p2p_bets::cancel_bet))
-
-        // POST /api/v1/p2p-bets/:id/report-outcome - Report outcome for a P2P bet
-        .route("/api/v1/p2p-bets/:id/report-outcome", post(p2p_bets::report_outcome))
-
-        // POST /api/v1/p2p-bets/:id/confirm-outcome - Confirm outcome for a P2P bet
-        .route("/api/v1/p2p-bets/:id/confirm-outcome", post(p2p_bets::confirm_outcome))
 
         // GET /api/v1/p2p-bets/:id/outcome-status - Get outcome status for a P2P bet
         .route("/api/v1/p2p-bets/:id/outcome-status", get(p2p_bets::get_outcome_status))
@@ -365,6 +352,33 @@ pub fn build_router(state: AppState) -> Router {
             mw::rate_limit::rate_limit_general,
         ));
 
+    // ---- P2P BET WRITE ROUTES (JWT required + stricter 20 req/min rate limit) ----
+    // Write operations on P2P bets have a tighter rate limit to prevent spam/abuse.
+    let p2p_write_routes = Router::new()
+        // POST /api/v1/p2p-bets - Create a new P2P bet
+        .route("/api/v1/p2p-bets", post(p2p_bets::create_bet))
+
+        // POST /api/v1/p2p-bets/:id/join - Join a P2P bet
+        .route("/api/v1/p2p-bets/:id/join", post(p2p_bets::join_bet))
+
+        // POST /api/v1/p2p-bets/:id/cancel - Cancel a P2P bet
+        .route("/api/v1/p2p-bets/:id/cancel", post(p2p_bets::cancel_bet))
+
+        // POST /api/v1/p2p-bets/:id/report-outcome - Report outcome for a P2P bet
+        .route("/api/v1/p2p-bets/:id/report-outcome", post(p2p_bets::report_outcome))
+
+        // POST /api/v1/p2p-bets/:id/confirm-outcome - Confirm outcome for a P2P bet
+        .route("/api/v1/p2p-bets/:id/confirm-outcome", post(p2p_bets::confirm_outcome))
+
+        // Apply JWT authentication middleware
+        .layer(middleware::from_fn_with_state(state.clone(), mw::auth::require_auth))
+
+        // Apply P2P write rate limiting (20 req/min - tighter than general)
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            mw::rate_limit::rate_limit_p2p_write,
+        ));
+
     // ---- M-PESA CALLBACK (commented out) ----
     // The M-Pesa callback doesn't need auth (Safaricom calls it directly)
     // but it's disabled since we're using Freighter wallet.
@@ -382,6 +396,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(public)           // Public read-only endpoints
         .merge(websocket)        // WebSocket endpoint
         .merge(protected)        // JWT-protected endpoints
+        .merge(p2p_write_routes) // P2P bet write endpoints (stricter rate limit)
         // .merge(mpesa_callback) // M-Pesa callback (disabled)
 
         // Apply global middleware to ALL routes

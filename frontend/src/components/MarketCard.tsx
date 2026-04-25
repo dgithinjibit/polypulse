@@ -1,13 +1,13 @@
 import { useNavigate } from 'react-router-dom';
 import { Bet, BetState, BetUpdate } from '../types/p2p-bet';
 import { useWebSocket } from '../context/WebSocketContext';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 
 interface MarketCardProps {
   bet: Bet;
 }
 
-export function MarketCard({ bet }: MarketCardProps) {
+export const MarketCard = memo(function MarketCard({ bet }: MarketCardProps) {
   const navigate = useNavigate();
   const { subscribeToBet } = useWebSocket();
   
@@ -203,4 +203,4 @@ export function MarketCard({ bet }: MarketCardProps) {
       </div>
     </div>
   );
-}
+});

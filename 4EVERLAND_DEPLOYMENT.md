@@ -14,6 +14,7 @@ Copy these EXACT values when deploying to 4everland:
 | `VITE_SOROBAN_RPC_URL` | `https://soroban-testnet.stellar.org` |
 | `VITE_STELLAR_MARKET_CONTRACT_ID` | *(leave empty for now)* |
 | `VITE_STELLAR_CHALLENGE_CONTRACT_ID` | *(leave empty for now)* |
+| `VITE_STELLAR_P2P_BET_CONTRACT_ID` | *(leave empty for now)* |
 
 ---
 
@@ -82,6 +83,7 @@ VITE_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
 # Smart Contract IDs (leave empty for now - add when deployed)
 VITE_STELLAR_MARKET_CONTRACT_ID=
 VITE_STELLAR_CHALLENGE_CONTRACT_ID=
+VITE_STELLAR_P2P_BET_CONTRACT_ID=
 ```
 
 **Note**: The contract IDs are empty because you haven't deployed your Stellar smart contracts yet. You can add them later.
